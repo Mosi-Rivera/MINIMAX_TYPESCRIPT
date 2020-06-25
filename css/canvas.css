@@ -1,0 +1,17 @@
+#canvas-container {
+    background-color: red;
+    border: 1rem solid black;
+    width: 50%;
+    position: relative;
+    overflow: hidden;
+}
+
+#canvas-container::before {
+    content: "";
+    display: inline-block;
+    padding-top: 100%;
+}
+
+canvas {
+    position: absolute;
+}
