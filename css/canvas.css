@@ -1,7 +1,7 @@
 #canvas-container {
     background-color: red;
     border: 1rem solid black;
-    width: 50%;
+    width: 40%;
     position: relative;
     overflow: hidden;
 }
