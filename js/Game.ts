@@ -11,20 +11,24 @@ function DevelopmentError(str:string) : void {
 //#region HELPERS_EVENTS
 class InvokableEvent
 {
-    public exec:Function;
-    public context:Object;
-    public parameters:any[];
-
-    constructor(context:Object,exec:Function,parameters:any[] = [])
+    public exec:() => void|boolean;
+    private context:Object;
+    private parameters:any[];
+    private repeat:number;
+    constructor(context:Object,exec:() => void|boolean,repeat:number = 0,parameters:any[] = [])
     {
         this.exec = exec;
         this.context = context;
         this.parameters = parameters;
+        this.repeat = repeat;
     }
 
-    public Invoke() : void
+    public Invoke() : InvokableEvent | null
     {
         this.exec.apply(this.context,this.parameters);
+        if (this.repeat-- == 0)
+            return null;
+        return this;
     }
 }
 function AddEvent(eventArr:InvokableEvent[],event:InvokableEvent) : number
@@ -53,7 +57,7 @@ function AddEvent(eventArr:InvokableEvent[],event:InvokableEvent) : number
         eventArr.push(event);
         return eventArr.length - 1;
 }
-function RemoveEvent(eventArr:InvokableEvent[],id:number,func:Function) : boolean
+function RemoveEvent(eventArr:InvokableEvent[],id:number,func:() => void|boolean) : boolean
 {
     if (eventArr[id].exec == func)
     {
@@ -70,17 +74,17 @@ function HandleEvents(eventArr:InvokableEvent[]) : void
         while (i < l)
         {
             if (eventArr[i] !== null)
-                eventArr[i].Invoke();
+                eventArr[i] = eventArr[i].Invoke();
             i++
         }
     }
 //#endregion
 
 //#region HELPERS_GENERIC
-function Throttle () : Function
+function Throttle () : (func:() => void, delay:number) => void
 {
 	let to:any = true;
-	return function (func, delay) : void
+	return function (func:() => void, delay:number) : void
     {
         if (to)
         {
@@ -104,6 +108,24 @@ function TileColor (tile:Tiles) : string
 ;}
 //#endregion
 
+//#region Vector2
+class Vector2
+{
+    public x:number;
+    public y:number;
+    constructor(x:number = 0,y:number = 0)
+    {
+        this.x = x;
+        this.y = y;
+    }
+
+    Clone() : Vector2
+    {
+        return new Vector2(this.x,this.y);
+    }
+}
+//#endregion
+
 //#region CONSTS
 const canvasBackground  : HTMLCanvasElement = document.getElementById('canvas-background') as HTMLCanvasElement;
 const canvasMidground   : HTMLCanvasElement = document.getElementById('canvas-midground') as HTMLCanvasElement;
@@ -114,6 +136,17 @@ const ctxMidground  = canvasMidground.getContext('2d');
 const ctxForeground = canvasForeground.getContext('2d');
 
 const obstaclePatternY:number[] = [0,2,1];
+
+const enum GamePieceEvent
+{
+    combat_end = 0,
+    turn_start,
+    turn_end,
+    round_start,
+    round_end,
+    on_leave,
+    on_enter
+}
 
 const enum CanvasEvents
 {
@@ -148,6 +181,13 @@ const enum Directions{
     down,
     left
 }
+
+const directions_multipliers:{[key:string]: Vector2} = {
+    [Directions.up]     : new Vector2(0,-1),
+    [Directions.right]  : new Vector2(1,0),
+    [Directions.down]   : new Vector2(0,1),
+    [Directions.left]   : new Vector2(-1,0)
+};
 
 const enum Difficulties
 {
@@ -195,13 +235,29 @@ class CanvasManager
     private resizeEvents:InvokableEvent[] = [];
     private drawBoardEvents:InvokableEvent[] = [];
     private drawEvents:InvokableEvent[] = [];
+    private removeResizeListener:() => void;
+    private addResizeListener:() => void;
     constructor(scaleX:number,scaleY:number)
     {
         this.scaleX = scaleX;
         this.scaleY = scaleY;
         let throttle = Throttle();
-        window.addEventListener('resize',() => throttle.apply(this,[this.Resize,250]));
+        let resize = () => throttle.apply(this,[this.Resize,250]);
+        this.addResizeListener = () : void =>
+            window.addEventListener("resize",resize);
+        this.removeResizeListener = () : void => 
+            window.removeEventListener('resize',resize);
+        this.addResizeListener();
         this.Resize();
+    }
+
+    public Reset() : void
+    {
+        this.drawEvents.length = 0;
+        this.resizeEvents.length = 0;
+        this.drawBoardEvents.length = 0;
+        this.ClearCanvas();
+        this.removeResizeListener();
     }
 
     public AddEvent(event:InvokableEvent,type:CanvasEvents) : number
@@ -209,7 +265,7 @@ class CanvasManager
         return AddEvent(this.GetEventArr(type),event);
     }
 
-    public RemoveEvent(id:number,func:Function,type:CanvasEvents) : boolean
+    public RemoveEvent(id:number,func:() => void|boolean,type:CanvasEvents) : boolean
     {
         return RemoveEvent(this.GetEventArr(type),id,func);
     }
@@ -345,24 +401,6 @@ class CanvasManager
 }
 //#endregion
 
-//#region Vector2
-class Vector2
-{
-    public x:number;
-    public y:number;
-    constructor(x:number = 0,y:number = 0)
-    {
-        this.x = x;
-        this.y = y;
-    }
-
-    Clone() : Vector2
-    {
-        return new Vector2(this.x,this.y);
-    }
-}
-//#endregion
-
 //#region  GAME_MANAGER
 class GameManager
 {
@@ -431,6 +469,13 @@ class GameManager
 interface IGamePiece
 {
     direction:Directions;
+    combat_end_events:InvokableEvent[];
+    turn_start_events:InvokableEvent[];
+    turn_end_events:InvokableEvent[];
+    round_start_events:InvokableEvent[];
+    round_end_events:InvokableEvent[];
+    on_enter_events:InvokableEvent[];
+    on_leave_events:InvokableEvent[];
     SetPosition(x:number,y:number) : void;
     SetActive(b:boolean) : void;
     SetValue(n:number) : void;
@@ -440,19 +485,26 @@ interface IGamePiece
 
 class GamePiece implements IGamePiece, IDrawable
 {
-    public direction        :Directions = Directions.up;
-    public position         : Vector2 = new Vector2();
-    public last_position    : Vector2 = new Vector2();
-    public draw_position    : Vector2 = new Vector2();
-    public draw_rect        : Vector2 = new Vector2();
-    public draw_text        : string;
-    public draw_color       : string;
-    public draw_type        : DrawType = DrawType.text;
-    public draw_sprite      : any;
-    public value            : number  = null;
-    public active           : boolean = false;
-    public lerpTimer        : number  = 0;
-    public piece_value_offset:number;
+    public direction            : Directions = Directions.up;
+    public combat_end_events    : InvokableEvent[] = [];
+    public turn_start_events    : InvokableEvent[] = [];
+    public turn_end_events      : InvokableEvent[] = [];
+    public round_start_events   : InvokableEvent[] = [];
+    public round_end_events     : InvokableEvent[] = [];
+    public on_enter_events      : InvokableEvent[] = [];
+    public on_leave_events      : InvokableEvent[] = [];
+    public position             : Vector2 = new Vector2();
+    public last_position        : Vector2 = new Vector2();
+    public draw_position        : Vector2 = new Vector2();
+    public draw_rect            : Vector2 = new Vector2();
+    public draw_text            : string;
+    public draw_color           : string;
+    public draw_type            : DrawType = DrawType.text;
+    public draw_sprite          : any;
+    public value                : number  = null;
+    public active               : boolean = false;
+    public lerpTimer            : number  = 0;
+    public piece_value_offset   : number;
     
     constructor(active:boolean,piece_value_offset:number) 
     {
@@ -463,6 +515,36 @@ class GamePiece implements IGamePiece, IDrawable
     SetDirection(direction:Directions)
     {
         this.direction = direction;
+    }
+
+    AddEvent(event:InvokableEvent,type:GamePieceEvent) : number
+    {
+        console.log('type_add_event: ' + type);
+        return AddEvent(this.GetEventArr(type),event);
+    }
+
+    RemoveEvent(id:number,func:() => void|boolean,type:GamePieceEvent) : boolean
+    {
+        return RemoveEvent(this.GetEventArr(type),id,func);
+    }
+
+    GetEventArr(type:GamePieceEvent) : InvokableEvent[]
+    {
+        if (GamePieceEvent.combat_end == type)
+            return this.combat_end_events;
+        else if (GamePieceEvent.turn_start == type)
+            return this.turn_start_events;
+        else if (GamePieceEvent.turn_end == type)
+            return this.turn_end_events;
+        else if (GamePieceEvent.round_start == type)
+            return this.round_start_events;
+        else if (GamePieceEvent.round_end == type)
+            return this.round_end_events;
+        else if (GamePieceEvent.on_enter == type)
+            return this.on_enter_events;
+        else if (GamePieceEvent.on_leave == type)
+            return this.on_leave_events;
+        DevelopmentError("GetEventArr did not catch GamePieceEvent.");
     }
 
     GetBoardValue() : number
@@ -484,6 +566,8 @@ class GamePiece implements IGamePiece, IDrawable
     {
         this.last_position.x = this.position.x;
         this.last_position.y = this.position.y;
+        this.draw_position.x = x;
+        this.draw_position.y = y;
         this.position.x = x;
         this.position.y = y;
     }
@@ -515,11 +599,12 @@ class GamePiece implements IGamePiece, IDrawable
 //#region PLAYER
 interface IPlayer
 {
-    AddTiles(n:number) : void;
+    AddTiles(n:number,x:number,y:number) : void;
     tiles:number;
     pieces_length:number;
     pieces:GamePiece[];
     piece_value_offset:number;
+    RoundEnd():void;
 }
 
 abstract class Player {
@@ -543,7 +628,19 @@ abstract class Player {
         )(pieces_length);
     }
 
-    public AddTiles(n:number) : void
+    public RoundEnd() : void
+    {
+        let i:number = 0,
+            l:number = this.pieces.length;
+        while (i < l)
+        {
+            HandleEvents(this.pieces[i].round_end_events);
+            HandleEvents(this.pieces[i].combat_end_events);
+            i++;
+        }
+    }
+
+    public AddTiles(n:number,x:number = null,y:number = null) : void
     {
         this.tiles += n;
     }
@@ -559,7 +656,7 @@ class HumanPlayer extends Player implements IPlayer
 
 class BotPlayer extends Player implements IPlayer
 {
-    private tiles_arr:Vector2[];
+    private tiles_arr:Vector2[] = [];
 
     constructor(pieces_length:number,piece_value_offset:number)
     {
@@ -588,14 +685,19 @@ interface IGame
     PlayerAction(action:number) : void;
     GetPlayer(id:Players) : IPlayer;
     GetOtherPlayer(id:Players) : IPlayer;
+    PlayerAttack(id:Players) : void;
+    RoundEnd() : void;
+    turns_per_round:number;
 }
 abstract class Game
 {
     public board:number[][];
     public difficulty:Difficulties;
     public piece_length:number;
-    constructor(difficulty:Difficulties,board_size:number)
+    public turns_per_round:number;
+    constructor(difficulty:Difficulties,board_size:number,turns_per_round:number)
     {
+        this.turns_per_round = turns_per_round;
         if (board_size < 6 || board_size % 3 != 0)
             DevelopmentError("Invalid board size");
         this.difficulty = difficulty;
@@ -614,6 +716,11 @@ abstract class Game
                 _y++;
             }
         })(board_size);
+    }
+
+    public Destroy() : void
+    {
+        canvas_manager.Reset();
     }
 
     public Update(delta:number) : void 
@@ -669,33 +776,82 @@ abstract class Game
     public CheckPositionBounds(x:number,y:number) : boolean
     {
         if (
-            x < 0 || x > this.board.length ||
-            y < 0 || y > this.board[0].length
+            x < 0 || x >= this.board.length ||
+            y < 0 || y >= this.board.length
             )
             return false;
         return true;
     }
 
-    public RoundEndAttack() : void
+    public RoundEnd() : void
     {
-
+        this.PlayerAttack(Players.bot);
+        this.PlayerAttack(Players.human);
+        this.GetPlayer(Players.bot).RoundEnd();
+        this.GetPlayer(Players.human).RoundEnd();
     }
 
-    public PlayerMove(dir:Directions,id:Players) : void
+    public PlayerAttack(id:Players) : void
     {
-        if (dir == Directions.up)
-            return this.HandleMove(0,-1,id);
-        else if (dir == Directions.right)
-            return this.HandleMove(1,0,id);
-        else if (dir == Directions.down)
-            return this.HandleMove(0,1,id);
-        else if (dir == Directions.left)
-            return this.HandleMove(-1,0,id);
-        DevelopmentError("PlayerMove did not catch the direction.");
+        let player = this.GetPlayer(id);
+        let other_player = this.GetOtherPlayer(id);
+        let pieces:GamePiece[] = player.pieces,
+            i:number = 0,
+            l = pieces.length,
+            j:number,
+            k:number;
+        let piece:GamePiece;
+        let x:number,
+            y:number,
+            nx:number,
+            ny:number;
+        let direction_mult:Vector2;
+        let target:number;
+        let target_piece:GamePiece;
+        let enemy_range_min = other_player.piece_value_offset;
+        let enemy_range_max = other_player.piece_value_offset + this.piece_length;
+        while (i < l)
+        {
+            piece = pieces[i];
+            if (piece.active && piece.value != 1)
+            {
+                x = piece.position.x;
+                y = piece.position.y;
+                j = 1;
+                k = piece.value;
+                direction_mult = directions_multipliers[piece.direction];
+                while (j <= k)
+                {
+                    console.log(j);
+                    ny = y + (direction_mult.y * j);
+                    nx = x + (direction_mult.x * j);
+                    console.log(nx,ny,piece.value,id);
+                    if (!this.CheckPositionBounds(nx,ny)) break;
+                    target = this.board[ny][nx];
+                    if (target == Tiles.obstacle) break;
+                    if (target > enemy_range_min && target <= enemy_range_max)
+                    {
+                        target_piece = other_player.pieces[(target - enemy_range_min) - 1];
+                        if (piece.value >= target_piece.value)
+                            target_piece.AddEvent(new InvokableEvent(
+                                target_piece,
+                                function()
+                                {
+                                    this.SetActive(false);
+                                }
+                            ),GamePieceEvent.combat_end);
+                    }
+                    j++;
+                }
+            }
+            i++;
+        }
     }
 
-    private HandleMove(x:number,y:number,id:Players) : void
+    private PlayerMove(direction:Directions,id:Players) : void
     {
+        let x = directions_multipliers[direction].x;
+        let y = directions_multipliers[direction].y;
         let player:IPlayer = this.GetPlayer(id);
         let other_player:IPlayer = this.GetOtherPlayer(id);
         if (!player)
@@ -710,7 +866,8 @@ abstract class Game
         while (i < l)
         {
             let piece:GamePiece = player.pieces[i++];
-            if (piece && piece.active)
+            piece.direction = direction;
+            if (piece.active && piece.value % 2 != 0)
             {
                 start_position = piece.position.Clone();
                 j = 1;
@@ -722,23 +879,17 @@ abstract class Game
                     if (this.CheckPositionBounds(_x,_y))
                     {
                         let tile_val:number = this.board[_y][_x];
-                        if (tile_val !== Tiles.blue && tile_val !== Tiles.red && tile_val !== Tiles.neutral) {
-                            this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
+                        if (tile_val !== Tiles.blue && tile_val !== Tiles.red && tile_val !== Tiles.neutral)
                             break;
-                        }
                         else {
                             if (tile_val == other_color)
-                                other_player.AddTiles(-1);
-                            player.AddTiles(1);
+                                other_player.AddTiles(-1,_x,_y);
+                            player.AddTiles(1,_x,_y);
                             this.board[piece.position.y][piece.position.x] = color;
                             piece.SetPosition(_x,_y);
+                            this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
                         }
                     } 
-                    else
-                    {
-                        this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
-                        break;
-                    }
                     j++;
                 }
             }
@@ -755,7 +906,7 @@ class BotGame  extends Game implements IGame
     private draw_pieces_event_id:number;
     constructor(difficulty:Difficulties)
     {
-        super(difficulty,12);
+        super(difficulty,12,3);
         this.piece_length = 5;
         if (!this.piece_length || this.piece_length <= 0)
             DevelopmentError("Piece length is not valid");
@@ -812,11 +963,11 @@ class BotGame  extends Game implements IGame
             this.DrawTiles();
             this.DrawPieces();
             this.draw_tiles_event_id = canvas_manager.AddEvent(
-                new InvokableEvent(this,this.DrawTiles),
+                new InvokableEvent(this,this.DrawTiles,-1),
                 CanvasEvents.resize
             );
             this.draw_pieces_event_id = canvas_manager.AddEvent(
-                new InvokableEvent(this,this.DrawPieces),
+                new InvokableEvent(this,this.DrawPieces,-1),
                 CanvasEvents.resize    
             );
         }

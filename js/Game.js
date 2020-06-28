@@ -11,6 +11,7 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
+var _a;
 var in_development = true;
 var game_manager;
 //#region HELPERS_DEVELOPMENT
@@ -21,14 +22,19 @@ function DevelopmentError(str) {
 //#endregion
 //#region HELPERS_EVENTS
 var InvokableEvent = /** @class */ (function () {
-    function InvokableEvent(context, exec, parameters) {
+    function InvokableEvent(context, exec, repeat, parameters) {
+        if (repeat === void 0) { repeat = 0; }
         if (parameters === void 0) { parameters = []; }
         this.exec = exec;
         this.context = context;
         this.parameters = parameters;
+        this.repeat = repeat;
     }
     InvokableEvent.prototype.Invoke = function () {
         this.exec.apply(this.context, this.parameters);
+        if (this.repeat-- == 0)
+            return null;
+        return this;
     };
     return InvokableEvent;
 }());
@@ -64,7 +70,7 @@ function HandleEvents(eventArr) {
     var i = 0, l = eventArr.length;
     while (i < l) {
         if (eventArr[i] !== null)
-            eventArr[i].Invoke();
+            eventArr[i] = eventArr[i].Invoke();
         i++;
     }
 }
@@ -93,6 +99,20 @@ function TileColor(tile) {
     ;
 }
 //#endregion
+//#region Vector2
+var Vector2 = /** @class */ (function () {
+    function Vector2(x, y) {
+        if (x === void 0) { x = 0; }
+        if (y === void 0) { y = 0; }
+        this.x = x;
+        this.y = y;
+    }
+    Vector2.prototype.Clone = function () {
+        return new Vector2(this.x, this.y);
+    };
+    return Vector2;
+}());
+//#endregion
 //#region CONSTS
 var canvasBackground = document.getElementById('canvas-background');
 var canvasMidground = document.getElementById('canvas-midground');
@@ -102,6 +122,12 @@ var ctxBackground = canvasBackground.getContext('2d');
 var ctxMidground = canvasMidground.getContext('2d');
 var ctxForeground = canvasForeground.getContext('2d');
 var obstaclePatternY = [0, 2, 1];
+var directions_multipliers = (_a = {},
+    _a[0 /* up */] = new Vector2(0, -1),
+    _a[1 /* right */] = new Vector2(1, 0),
+    _a[2 /* down */] = new Vector2(0, 1),
+    _a[3 /* left */] = new Vector2(-1, 0),
+    _a);
 var CanvasManager = /** @class */ (function () {
     function CanvasManager(scaleX, scaleY) {
         var _this = this;
@@ -111,9 +137,23 @@ var CanvasManager = /** @class */ (function () {
         this.scaleX = scaleX;
         this.scaleY = scaleY;
         var throttle = Throttle();
-        window.addEventListener('resize', function () { return throttle.apply(_this, [_this.Resize, 250]); });
+        var resize = function () { return throttle.apply(_this, [_this.Resize, 250]); };
+        this.addResizeListener = function () {
+            return window.addEventListener("resize", resize);
+        };
+        this.removeResizeListener = function () {
+            return window.removeEventListener('resize', resize);
+        };
+        this.addResizeListener();
         this.Resize();
     }
+    CanvasManager.prototype.Reset = function () {
+        this.drawEvents.length = 0;
+        this.resizeEvents.length = 0;
+        this.drawBoardEvents.length = 0;
+        this.ClearCanvas();
+        this.removeResizeListener();
+    };
     CanvasManager.prototype.AddEvent = function (event, type) {
         return AddEvent(this.GetEventArr(type), event);
     };
@@ -225,20 +265,6 @@ var CanvasManager = /** @class */ (function () {
     return CanvasManager;
 }());
 //#endregion
-//#region Vector2
-var Vector2 = /** @class */ (function () {
-    function Vector2(x, y) {
-        if (x === void 0) { x = 0; }
-        if (y === void 0) { y = 0; }
-        this.x = x;
-        this.y = y;
-    }
-    Vector2.prototype.Clone = function () {
-        return new Vector2(this.x, this.y);
-    };
-    return Vector2;
-}());
-//#endregion
 //#region  GAME_MANAGER
 var GameManager = /** @class */ (function () {
     function GameManager(game) {
@@ -289,6 +315,14 @@ var GameManager = /** @class */ (function () {
 }());
 var GamePiece = /** @class */ (function () {
     function GamePiece(active, piece_value_offset) {
+        this.direction = 0 /* up */;
+        this.combat_end_events = [];
+        this.turn_start_events = [];
+        this.turn_end_events = [];
+        this.round_start_events = [];
+        this.round_end_events = [];
+        this.on_enter_events = [];
+        this.on_leave_events = [];
         this.position = new Vector2();
         this.last_position = new Vector2();
         this.draw_position = new Vector2();
@@ -300,6 +334,33 @@ var GamePiece = /** @class */ (function () {
         this.active = active;
         this.piece_value_offset = piece_value_offset;
     }
+    GamePiece.prototype.SetDirection = function (direction) {
+        this.direction = direction;
+    };
+    GamePiece.prototype.AddEvent = function (event, type) {
+        console.log('type_add_event: ' + type);
+        return AddEvent(this.GetEventArr(type), event);
+    };
+    GamePiece.prototype.RemoveEvent = function (id, func, type) {
+        return RemoveEvent(this.GetEventArr(type), id, func);
+    };
+    GamePiece.prototype.GetEventArr = function (type) {
+        if (0 /* combat_end */ == type)
+            return this.combat_end_events;
+        else if (1 /* turn_start */ == type)
+            return this.turn_start_events;
+        else if (2 /* turn_end */ == type)
+            return this.turn_end_events;
+        else if (3 /* round_start */ == type)
+            return this.round_start_events;
+        else if (4 /* round_end */ == type)
+            return this.round_end_events;
+        else if (6 /* on_enter */ == type)
+            return this.on_enter_events;
+        else if (5 /* on_leave */ == type)
+            return this.on_leave_events;
+        DevelopmentError("GetEventArr did not catch GamePieceEvent.");
+    };
     GamePiece.prototype.GetBoardValue = function () {
         return this.value + this.piece_value_offset;
     };
@@ -314,6 +375,8 @@ var GamePiece = /** @class */ (function () {
     GamePiece.prototype.SetPosition = function (x, y) {
         this.last_position.x = this.position.x;
         this.last_position.y = this.position.y;
+        this.draw_position.x = x;
+        this.draw_position.y = y;
         this.position.x = x;
         this.position.y = y;
     };
@@ -347,7 +410,17 @@ var Player = /** @class */ (function () {
             }
         })(pieces_length);
     }
-    Player.prototype.AddTiles = function (n) {
+    Player.prototype.RoundEnd = function () {
+        var i = 0, l = this.pieces.length;
+        while (i < l) {
+            HandleEvents(this.pieces[i].round_end_events);
+            HandleEvents(this.pieces[i].combat_end_events);
+            i++;
+        }
+    };
+    Player.prototype.AddTiles = function (n, x, y) {
+        if (x === void 0) { x = null; }
+        if (y === void 0) { y = null; }
         this.tiles += n;
     };
     return Player;
@@ -362,13 +435,27 @@ var HumanPlayer = /** @class */ (function (_super) {
 var BotPlayer = /** @class */ (function (_super) {
     __extends(BotPlayer, _super);
     function BotPlayer(pieces_length, piece_value_offset) {
-        return _super.call(this, pieces_length, piece_value_offset) || this;
+        var _this = _super.call(this, pieces_length, piece_value_offset) || this;
+        _this.tiles_arr = [];
+        return _this;
     }
+    BotPlayer.prototype.AddTiles = function (n, x, y) {
+        if (x === void 0) { x = null; }
+        if (y === void 0) { y = null; }
+        this.tiles += n;
+        if (n !== null && y != null) {
+            if (n < 0)
+                this.tiles_arr = this.tiles_arr.filter(function (vector2) { return !(vector2.x == x && vector2.y == y); });
+            else
+                this.tiles_arr.push(new Vector2(x, y));
+        }
+    };
     return BotPlayer;
 }(Player));
 var Game = /** @class */ (function () {
-    function Game(difficulty, board_size) {
+    function Game(difficulty, board_size, turns_per_round) {
         var _this = this;
+        this.turns_per_round = turns_per_round;
         if (board_size < 6 || board_size % 3 != 0)
             DevelopmentError("Invalid board size");
         this.difficulty = difficulty;
@@ -387,6 +474,9 @@ var Game = /** @class */ (function () {
             }
         })(board_size);
     }
+    Game.prototype.Destroy = function () {
+        canvas_manager.Reset();
+    };
     Game.prototype.Update = function (delta) {
         DevelopmentError('Update Function not implemented in Game inheritor.');
         return;
@@ -421,23 +511,62 @@ var Game = /** @class */ (function () {
         return null;
     };
     Game.prototype.CheckPositionBounds = function (x, y) {
-        if (x < 0 || x > this.board.length ||
-            y < 0 || y > this.board[0].length)
+        if (x < 0 || x >= this.board.length ||
+            y < 0 || y >= this.board.length)
             return false;
         return true;
     };
-    Game.prototype.PlayerMove = function (dir, id) {
-        if (dir == 0 /* up */)
-            return this.HandleMove(0, -1, id);
-        else if (dir == 1 /* right */)
-            return this.HandleMove(1, 0, id);
-        else if (dir == 2 /* down */)
-            return this.HandleMove(0, 1, id);
-        else if (dir == 3 /* left */)
-            return this.HandleMove(-1, 0, id);
-        DevelopmentError("PlayerMove did not catch the direction.");
+    Game.prototype.RoundEnd = function () {
+        this.PlayerAttack(1 /* bot */);
+        this.PlayerAttack(0 /* human */);
+        this.GetPlayer(1 /* bot */).RoundEnd();
+        this.GetPlayer(0 /* human */).RoundEnd();
     };
-    Game.prototype.HandleMove = function (x, y, id) {
+    Game.prototype.PlayerAttack = function (id) {
+        var player = this.GetPlayer(id);
+        var other_player = this.GetOtherPlayer(id);
+        var pieces = player.pieces, i = 0, l = pieces.length, j, k;
+        var piece;
+        var x, y, nx, ny;
+        var direction_mult;
+        var target;
+        var target_piece;
+        var enemy_range_min = other_player.piece_value_offset;
+        var enemy_range_max = other_player.piece_value_offset + this.piece_length;
+        while (i < l) {
+            piece = pieces[i];
+            if (piece.active && piece.value != 1) {
+                x = piece.position.x;
+                y = piece.position.y;
+                j = 1;
+                k = piece.value;
+                direction_mult = directions_multipliers[piece.direction];
+                while (j <= k) {
+                    console.log(j);
+                    ny = y + (direction_mult.y * j);
+                    nx = x + (direction_mult.x * j);
+                    console.log(nx, ny, piece.value, id);
+                    if (!this.CheckPositionBounds(nx, ny))
+                        break;
+                    target = this.board[ny][nx];
+                    if (target == -3 /* obstacle */)
+                        break;
+                    if (target > enemy_range_min && target <= enemy_range_max) {
+                        target_piece = other_player.pieces[(target - enemy_range_min) - 1];
+                        if (piece.value >= target_piece.value)
+                            target_piece.AddEvent(new InvokableEvent(target_piece, function () {
+                                this.SetActive(false);
+                            }), 0 /* combat_end */);
+                    }
+                    j++;
+                }
+            }
+            i++;
+        }
+    };
+    Game.prototype.PlayerMove = function (direction, id) {
+        var x = directions_multipliers[direction].x;
+        var y = directions_multipliers[direction].y;
         var player = this.GetPlayer(id);
         var other_player = this.GetOtherPlayer(id);
         if (!player)
@@ -448,7 +577,8 @@ var Game = /** @class */ (function () {
         var start_position;
         while (i < l) {
             var piece = player.pieces[i++];
-            if (piece && piece.active) {
+            piece.direction = direction;
+            if (piece.active && piece.value % 2 != 0) {
                 start_position = piece.position.Clone();
                 j = 1;
                 k = piece.value == 1 ? this.board.length : piece.value;
@@ -457,21 +587,16 @@ var Game = /** @class */ (function () {
                     var _y = start_position.y + (y * j);
                     if (this.CheckPositionBounds(_x, _y)) {
                         var tile_val = this.board[_y][_x];
-                        if (tile_val !== -1 /* blue */ && tile_val !== -2 /* red */ && tile_val !== 0 /* neutral */) {
-                            this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
+                        if (tile_val !== -1 /* blue */ && tile_val !== -2 /* red */ && tile_val !== 0 /* neutral */)
                             break;
-                        }
                         else {
                             if (tile_val == other_color)
-                                other_player.AddTiles(-1);
-                            player.AddTiles(1);
+                                other_player.AddTiles(-1, _x, _y);
+                            player.AddTiles(1, _x, _y);
                             this.board[piece.position.y][piece.position.x] = color;
                             piece.SetPosition(_x, _y);
+                            this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
                         }
-                    }
-                    else {
-                        this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
-                        break;
                     }
                     j++;
                 }
@@ -483,7 +608,7 @@ var Game = /** @class */ (function () {
 var BotGame = /** @class */ (function (_super) {
     __extends(BotGame, _super);
     function BotGame(difficulty) {
-        var _this = _super.call(this, difficulty, 12) || this;
+        var _this = _super.call(this, difficulty, 12, 3) || this;
         _this.botTurn = false;
         _this.piece_length = 5;
         if (!_this.piece_length || _this.piece_length <= 0)
@@ -494,17 +619,23 @@ var BotGame = /** @class */ (function (_super) {
             //Set Initial Positions
             var piece = void 0;
             var width_is_even = _this.board[0].length % 2 == 0;
-            var yPos = Math.ceil((_this.board.length / 3) / 2);
+            var yDif = Math.ceil((_this.board.length / 3) / 2);
+            var _x = void 0, _y = void 0;
             piece = _this.human.pieces[0];
+            piece.SetDirection(2 /* down */);
             piece.SetActive(true);
-            piece.SetInitialPosition(Math.floor(_this.board[0].length / 2) - 1, _this.board.length - yPos);
+            piece.SetInitialPosition(Math.floor(_this.board[0].length / 2) - 1, _this.board.length - yDif);
             piece.SetValue(1);
             _this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
             piece = _this.bot.pieces[0];
+            _x = Math.floor(_this.board[0].length / 2) + (width_is_even ? 0 : 1);
+            _y = yDif - 1;
+            piece.SetDirection(0 /* up */);
             piece.SetActive(true);
-            piece.SetInitialPosition(Math.floor(_this.board[0].length / 2) + (width_is_even ? 0 : 1), yPos - 1);
+            piece.SetInitialPosition(_x, _y);
             piece.SetValue(1);
             _this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
+            _this.bot.AddTiles(0, _x, _y);
         }
         {
             //Generate Obstacles
@@ -528,8 +659,8 @@ var BotGame = /** @class */ (function (_super) {
             canvas_manager.DrawBoard();
             _this.DrawTiles();
             _this.DrawPieces();
-            _this.draw_tiles_event_id = canvas_manager.AddEvent(new InvokableEvent(_this, _this.DrawTiles), 0 /* resize */);
-            _this.draw_pieces_event_id = canvas_manager.AddEvent(new InvokableEvent(_this, _this.DrawPieces), 0 /* resize */);
+            _this.draw_tiles_event_id = canvas_manager.AddEvent(new InvokableEvent(_this, _this.DrawTiles, -1), 0 /* resize */);
+            _this.draw_pieces_event_id = canvas_manager.AddEvent(new InvokableEvent(_this, _this.DrawPieces, -1), 0 /* resize */);
         }
         else
             DevelopmentError("canvas_manager is not initialized!");
