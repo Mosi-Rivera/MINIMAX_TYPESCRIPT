@@ -166,7 +166,8 @@ const enum DrawType
 {
     sprite = 0,
     text,
-    rect
+    rect,
+    game_piece
 }
 
 const enum Players
@@ -322,7 +323,25 @@ class CanvasManager
         let ctx:CanvasRenderingContext2D = this.GetCanvasContext(canvas);
         let position:Vector2 = drawable.draw_position;
         ctx.fillStyle = color;
-        if (drawable.draw_type == DrawType.text)
+        if (drawable.draw_type == DrawType.game_piece)
+        {
+            let piece = drawable as GamePiece;
+            let dir_mult = directions_multipliers[piece.direction];
+            ctx.fillText(
+                piece.draw_text,
+                (position.x + 0.5) * this.tileWidth,
+                (position.y + 0.5) * this.tileHeight
+            );
+            ctx.fillStyle = 'yellow';
+            ctx.fillRect(
+                (position.x * this.tileWidth) + (dir_mult.x == 1 ? (this.tileWidth * 0.9) : 0  + this.gridLineWidth/2),
+                (position.y * this.tileHeight) + (dir_mult.y == 1 ? (this.tileHeight * 0.9) : 0  + this.gridLineWidth/2),
+                dir_mult.x == 0 ? this.tileWidth  - (this.gridLineWidth) : (this.tileWidth * 0.1),
+                dir_mult.y == 0 ? this.tileHeight  - (this.gridLineWidth) : this.tileHeight * 0.1
+            );
+            return;
+        }
+        else if (drawable.draw_type == DrawType.text)
         {
             ctx.fillText(
                 drawable.draw_text,
@@ -499,7 +518,7 @@ class GamePiece implements IGamePiece, IDrawable
     public draw_rect            : Vector2 = new Vector2();
     public draw_text            : string;
     public draw_color           : string;
-    public draw_type            : DrawType = DrawType.text;
+    public draw_type            : DrawType = DrawType.game_piece;
     public draw_sprite          : any;
     public value                : number  = null;
     public active               : boolean = false;
@@ -605,6 +624,8 @@ interface IPlayer
     pieces:GamePiece[];
     piece_value_offset:number;
     RoundEnd():void;
+    last_direction:Directions;
+    SetLastDirection(direction:Directions):void;
 }
 
 abstract class Player {
@@ -612,6 +633,7 @@ abstract class Player {
     public pieces_length:number = null;
     public pieces:GamePiece[];
     public piece_value_offset:number;
+    public last_direction:Directions;
 
     constructor(pieces_length:number,piece_value_offset:number)
     {
@@ -626,6 +648,11 @@ abstract class Player {
                 }
             }
         )(pieces_length);
+    }
+
+    SetLastDirection(direction:Directions) : void
+    {
+        this.last_direction = direction;
     }
 
     public RoundEnd() : void
@@ -688,6 +715,8 @@ interface IGame
     PlayerAttack(id:Players) : void;
     RoundEnd() : void;
     turns_per_round:number;
+    turn_player:number;
+    deploying:boolean;
 }
 abstract class Game
 {
@@ -695,6 +724,11 @@ abstract class Game
     public difficulty:Difficulties;
     public piece_length:number;
     public turns_per_round:number;
+    public turn_counter:number;
+    public turn_player:Players = Players.human;
+    public deploying:boolean = false;
+    public deploy_counter:number = 0;
+
     constructor(difficulty:Difficulties,board_size:number,turns_per_round:number)
     {
         this.turns_per_round = turns_per_round;
@@ -783,12 +817,66 @@ abstract class Game
         return true;
     }
 
+    public PassTurn() : void
+    {
+        DevelopmentError("PassTurn function not implemented in Game inheritor.");
+    }
+
+    public TurnEnd() : void
+    {
+        if (this.turn_counter >= this.turns_per_round)
+            this.RoundEnd(); 
+        this.turn_counter++;
+        this.PassTurn();
+        this.DrawTiles();
+        this.DrawPieces();
+    }
+
+    public ResetTurnCounter() : void
+    {
+        this.turn_counter = 1;
+    }
+
     public RoundEnd() : void
     {
         this.PlayerAttack(Players.bot);
         this.PlayerAttack(Players.human);
         this.GetPlayer(Players.bot).RoundEnd();
         this.GetPlayer(Players.human).RoundEnd();
+        this.ResetTurnCounter();
+        this.StartDeployTurn();
+    }
+
+    public StartDeployTurn() : void
+    {
+        this.deploy_counter = 0;
+        this.deploying = true;
+        if (!this.CheckPlayerCanDeploy(Players.human))
+            this.deploy_counter++;
+        if (!this.CheckPlayerCanDeploy(Players.bot))
+            this.deploy_counter++;
+        if (this.deploy_counter >= 2)
+            this.EndDeployTurn();
+
+    }
+
+    public CheckPlayerCanDeploy(id:Players) : boolean
+    {
+        let player:Player = this.GetPlayer(id);
+        let pieces:GamePiece[] = player.pieces;
+        let i:number = 0,
+            l:number = player.pieces.length;
+        while (i < l) {
+            if (!pieces[i++].active) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public EndDeployTurn() : void
+    {
+        this.deploying = false;
     }
 
     public PlayerAttack(id:Players) : void
@@ -848,6 +936,45 @@ abstract class Game
         }
     }
 
+    private PlayerInputMove(direction:Directions,id:Players) : void {
+        if (this.turn_player != id)
+            return console.log('Not turn player!');
+        this.PlayerMove(direction,id);
+    }
+
+    private GetPlayerColor(id:Players)
+    {
+        if (id == Players.human)
+            return Tiles.blue;
+        return Tiles.red;
+    }
+
+    private PlayerInputDeploy(x:number,y:number,index:number,id:Players) : void
+    {
+        if (!this.CheckPositionBounds(x,y)) return;
+        if (this.board[y][x] != this.GetPlayerColor(id)) return; //TODO: Handle invalid deploy input;
+        let player:Player = this.GetPlayer(id);
+        let pieces:GamePiece[] = player.pieces;
+        let i:number = 0,
+            l:number = pieces.length;
+        let piece:GamePiece;
+        while (i < l)
+        {
+            piece = pieces[i++];
+            if (!piece.active)
+            {
+                piece.SetInitialPosition(x,y);
+                piece.SetValue(i + 1);
+                piece.SetDirection(player.last_direction);
+                this.board[y][x] = piece.GetBoardValue();
+                break;
+            }
+        }
+        this.deploy_counter++;
+        if (this.deploy_counter >= 0)
+            this.EndDeployTurn();
+    }
+
     private PlayerMove(direction:Directions,id:Players) : void
     {
         let x = directions_multipliers[direction].x;
@@ -863,6 +990,7 @@ abstract class Game
             j:number = 0,
             k:number;
         let start_position:Vector2;
+        player.SetLastDirection(direction);
         while (i < l)
         {
             let piece:GamePiece = player.pieces[i++];
@@ -973,6 +1101,14 @@ class BotGame  extends Game implements IGame
         }
         else
             DevelopmentError("canvas_manager is not initialized!");
+    }
+
+    PassTurn() : void
+    {
+        if (this.turn_player == Players.bot)
+            this.turn_player = Players.human;
+        else
+            this.turn_player = Players.bot;
     }
 
     DrawPieces()

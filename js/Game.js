@@ -203,7 +203,15 @@ var CanvasManager = /** @class */ (function () {
         var ctx = this.GetCanvasContext(canvas);
         var position = drawable.draw_position;
         ctx.fillStyle = color;
-        if (drawable.draw_type == 1 /* text */) {
+        if (drawable.draw_type == 3 /* game_piece */) {
+            var piece = drawable;
+            var dir_mult = directions_multipliers[piece.direction];
+            ctx.fillText(piece.draw_text, (position.x + 0.5) * this.tileWidth, (position.y + 0.5) * this.tileHeight);
+            ctx.fillStyle = 'yellow';
+            ctx.fillRect((position.x * this.tileWidth) + (dir_mult.x == 1 ? (this.tileWidth * 0.9) : 0 + this.gridLineWidth / 2), (position.y * this.tileHeight) + (dir_mult.y == 1 ? (this.tileHeight * 0.9) : 0 + this.gridLineWidth / 2), dir_mult.x == 0 ? this.tileWidth - (this.gridLineWidth) : (this.tileWidth * 0.1), dir_mult.y == 0 ? this.tileHeight - (this.gridLineWidth) : this.tileHeight * 0.1);
+            return;
+        }
+        else if (drawable.draw_type == 1 /* text */) {
             ctx.fillText(drawable.draw_text, ((position.x + 0.5) * this.tileWidth), ((position.y + 0.5) * this.tileHeight));
             return;
         }
@@ -327,7 +335,7 @@ var GamePiece = /** @class */ (function () {
         this.last_position = new Vector2();
         this.draw_position = new Vector2();
         this.draw_rect = new Vector2();
-        this.draw_type = 1 /* text */;
+        this.draw_type = 3 /* game_piece */;
         this.value = null;
         this.active = false;
         this.lerpTimer = 0;
@@ -410,6 +418,9 @@ var Player = /** @class */ (function () {
             }
         })(pieces_length);
     }
+    Player.prototype.SetLastDirection = function (direction) {
+        this.last_direction = direction;
+    };
     Player.prototype.RoundEnd = function () {
         var i = 0, l = this.pieces.length;
         while (i < l) {
@@ -455,6 +466,9 @@ var BotPlayer = /** @class */ (function (_super) {
 var Game = /** @class */ (function () {
     function Game(difficulty, board_size, turns_per_round) {
         var _this = this;
+        this.turn_player = 0 /* human */;
+        this.deploying = false;
+        this.deploy_counter = 0;
         this.turns_per_round = turns_per_round;
         if (board_size < 6 || board_size % 3 != 0)
             DevelopmentError("Invalid board size");
@@ -516,11 +530,51 @@ var Game = /** @class */ (function () {
             return false;
         return true;
     };
+    Game.prototype.PassTurn = function () {
+        DevelopmentError("PassTurn function not implemented in Game inheritor.");
+    };
+    Game.prototype.TurnEnd = function () {
+        if (this.turn_counter >= this.turns_per_round)
+            this.RoundEnd();
+        this.turn_counter++;
+        this.PassTurn();
+        this.DrawTiles();
+        this.DrawPieces();
+    };
+    Game.prototype.ResetTurnCounter = function () {
+        this.turn_counter = 1;
+    };
     Game.prototype.RoundEnd = function () {
         this.PlayerAttack(1 /* bot */);
         this.PlayerAttack(0 /* human */);
         this.GetPlayer(1 /* bot */).RoundEnd();
         this.GetPlayer(0 /* human */).RoundEnd();
+        this.ResetTurnCounter();
+        this.StartDeployTurn();
+    };
+    Game.prototype.StartDeployTurn = function () {
+        this.deploy_counter = 0;
+        this.deploying = true;
+        if (!this.CheckPlayerCanDeploy(0 /* human */))
+            this.deploy_counter++;
+        if (!this.CheckPlayerCanDeploy(1 /* bot */))
+            this.deploy_counter++;
+        if (this.deploy_counter >= 2)
+            this.EndDeployTurn();
+    };
+    Game.prototype.CheckPlayerCanDeploy = function (id) {
+        var player = this.GetPlayer(id);
+        var pieces = player.pieces;
+        var i = 0, l = player.pieces.length;
+        while (i < l) {
+            if (!pieces[i++].active) {
+                return true;
+            }
+        }
+        return false;
+    };
+    Game.prototype.EndDeployTurn = function () {
+        this.deploying = false;
     };
     Game.prototype.PlayerAttack = function (id) {
         var player = this.GetPlayer(id);
@@ -564,6 +618,39 @@ var Game = /** @class */ (function () {
             i++;
         }
     };
+    Game.prototype.PlayerInputMove = function (direction, id) {
+        if (this.turn_player != id)
+            return console.log('Not turn player!');
+        this.PlayerMove(direction, id);
+    };
+    Game.prototype.GetPlayerColor = function (id) {
+        if (id == 0 /* human */)
+            return -1 /* blue */;
+        return -2 /* red */;
+    };
+    Game.prototype.PlayerInputDeploy = function (x, y, index, id) {
+        if (!this.CheckPositionBounds(x, y))
+            return;
+        if (this.board[y][x] != this.GetPlayerColor(id))
+            return; //TODO: Handle invalid deploy input;
+        var player = this.GetPlayer(id);
+        var pieces = player.pieces;
+        var i = 0, l = pieces.length;
+        var piece;
+        while (i < l) {
+            piece = pieces[i++];
+            if (!piece.active) {
+                piece.SetInitialPosition(x, y);
+                piece.SetValue(i + 1);
+                piece.SetDirection(player.last_direction);
+                this.board[y][x] = piece.GetBoardValue();
+                break;
+            }
+        }
+        this.deploy_counter++;
+        if (this.deploy_counter >= 0)
+            this.EndDeployTurn();
+    };
     Game.prototype.PlayerMove = function (direction, id) {
         var x = directions_multipliers[direction].x;
         var y = directions_multipliers[direction].y;
@@ -575,6 +662,7 @@ var Game = /** @class */ (function () {
         var other_color = id == 0 /* human */ ? -2 /* red */ : -1 /* blue */;
         var i = 0, l = player.pieces_length, j = 0, k;
         var start_position;
+        player.SetLastDirection(direction);
         while (i < l) {
             var piece = player.pieces[i++];
             piece.direction = direction;
@@ -666,6 +754,12 @@ var BotGame = /** @class */ (function (_super) {
             DevelopmentError("canvas_manager is not initialized!");
         return _this;
     }
+    BotGame.prototype.PassTurn = function () {
+        if (this.turn_player == 1 /* bot */)
+            this.turn_player = 0 /* human */;
+        else
+            this.turn_player = 1 /* bot */;
+    };
     BotGame.prototype.DrawPieces = function () {
         var i = 0, l = this.piece_length;
         while (i < l) {
