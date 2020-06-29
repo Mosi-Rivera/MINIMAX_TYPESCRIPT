@@ -286,12 +286,12 @@ class CanvasManager
     {
         if (canvas == null)
         {
-            ctxBackground.clearRect(0,0,this.boardWidth,this.boardHeight);
-            ctxMidground.clearRect(0,0,this.boardWidth,this.boardHeight);
-            ctxForeground.clearRect(0,0,this.boardWidth,this.boardHeight);
+            ctxBackground.clearRect(0,0,this.canvasWidth,this.canvasHeight);
+            ctxMidground.clearRect(0,0,this.canvasWidth,this.canvasHeight);
+            ctxForeground.clearRect(0,0,this.canvasWidth,this.canvasHeight);
             return;
         }
-        this.GetCanvasContext(canvas).clearRect(0,0,this.boardWidth,this.boardHeight);
+        this.GetCanvasContext(canvas).clearRect(0,0,this.canvasWidth,this.canvasHeight);
     }
 
     public GetCanvas(canvas:CanvasLayers) : HTMLCanvasElement
@@ -624,8 +624,7 @@ interface IPlayer
     pieces:GamePiece[];
     piece_value_offset:number;
     RoundEnd():void;
-    last_direction:Directions;
-    SetLastDirection(direction:Directions):void;
+    color:Tiles;
 }
 
 abstract class Player {
@@ -633,8 +632,7 @@ abstract class Player {
     public pieces_length:number = null;
     public pieces:GamePiece[];
     public piece_value_offset:number;
-    public last_direction:Directions;
-
+    public color:Tiles;
     constructor(pieces_length:number,piece_value_offset:number)
     {
         this.piece_value_offset = piece_value_offset;
@@ -648,11 +646,6 @@ abstract class Player {
                 }
             }
         )(pieces_length);
-    }
-
-    SetLastDirection(direction:Directions) : void
-    {
-        this.last_direction = direction;
     }
 
     public RoundEnd() : void
@@ -678,6 +671,7 @@ class HumanPlayer extends Player implements IPlayer
     constructor(pieces_length:number,piece_value_offset:number)
     {
         super(pieces_length,piece_value_offset);
+        this.color = Tiles.blue;
     }
 }
 
@@ -688,6 +682,7 @@ class BotPlayer extends Player implements IPlayer
     constructor(pieces_length:number,piece_value_offset:number)
     {
         super(pieces_length,piece_value_offset);
+        this.color = Tiles.red;
     }
 
     public AddTiles(n:number,x:number = null,y:number = null) : void
@@ -705,6 +700,196 @@ class BotPlayer extends Player implements IPlayer
 
 //#endregion
 
+//#region MINIMAX
+function GAMESTATE_EVALUATOR(board:number[][],player:PlayerCopy) : number
+{
+    let player_score:number = 0;
+    let other_score:number = 0;
+    let player_pieces:number = 0;
+    let other_pieces:number = 0;
+    let piece_inf_limit:number = player.piece_value_offset,
+        piece_sup_limit:number = piece_inf_limit + player.pieces.length + 1;
+    let result:number = 0;
+    let color = player.color;
+    let other_color = color == Tiles.red ? Tiles.blue : Tiles.red;
+    let x:number = 0,
+        y:number = 0,
+        l:number = board.length;
+    let tile:Tiles;
+    let sub_value:number;
+    while (y < l)
+    {
+        x = 0;
+        while (x < l)
+        {
+            tile = board[y][x];
+            if (tile > 0)
+            {
+                if (tile > piece_inf_limit && tile <= piece_sup_limit)
+                {
+                    sub_value = (piece_sup_limit == 0 ? 0 : piece_inf_limit);
+                    if (tile - sub_value == 1)
+                        player_score += 10;
+                    else
+                        player_score += (tile - sub_value) * 2;
+                    player_pieces++;
+                } else {
+                    sub_value = (piece_sup_limit == 0 ? piece_inf_limit : 0);
+                    if (tile - sub_value == 1)
+                        other_score -= 10;
+                    else
+                        other_score -= (tile - sub_value) * 2;
+                    other_pieces++;
+                }
+            }
+            else if (tile == color)
+                player_score++;
+            else if (tile == other_color)
+                other_score--;
+            x++;
+        }
+        y++;
+    }
+    if (player_pieces == 0)
+        return -100;
+    else if (other_pieces == 0)
+        return 100;
+    return player_score + other_score;
+}
+class BotGameCopy
+{
+    board:number[][];
+    piece_length:number;
+    human:PlayerCopy;
+    bot:PlayerCopy;
+    constructor(board:number[][],piece_length:number,bot:IPlayer,human:IPlayer) {
+        this.board = [];
+        let x = 0,
+            y = 0,
+            l = board.length;
+        while(y < l)
+        {
+            this.board.push([]);
+            x = 0;
+            while (x < l)
+            {
+                this.board[y][x] = board[y][x];
+                x++;
+            }
+            y++;
+        }
+        this.piece_length = piece_length;
+        this.bot = new PlayerCopy(bot);
+        this.human = new PlayerCopy(human);
+    }
+}
+class PlayerCopy
+{
+    pieces_length:number;
+    piece_value_offset:number;
+    pieces:GamePieceCopy[];
+    tiles:number;
+    color:Tiles;
+    constructor(player:IPlayer)
+    {
+        this.color = player.color;
+        this.tiles = player.tiles;
+        this.piece_value_offset = player.piece_value_offset;
+        this.pieces_length = player.pieces_length;
+        let i = 0,
+            l = player.pieces.length;
+        this.pieces = [];
+        this.pieces.length = l;
+        while (i < l)
+            this.pieces[i] = new GamePieceCopy(player.pieces[i],i++);
+    }
+    AddTiles(n:number,x:number,y:number)
+    {
+        this.tiles += n;
+    }
+}
+class GamePieceCopy
+{
+    direction:Directions;
+    position:Vector2;
+    active:boolean;
+    value:number;
+    board_value:number;
+    constructor(piece:GamePiece,value:number)
+    {
+        this.position = piece.position;
+        this.active = piece.active;
+        this.value = value;
+        this.board_value = piece.piece_value_offset + this.value;
+    }
+    SetActive(b:boolean) : void
+    {
+        this.active = b;
+    }
+    SetPosition(x:number,y:number) : void
+    {
+        this.position = new Vector2(x,y);
+    }
+    GetBoardValue() : number
+    {
+        return this.board_value;
+    }
+}
+function MINIMAX(depth:number,game:BotGameCopy,max:boolean = true) : Directions
+{
+    let score:number = GAMESTATE_EVALUATOR(game.board,game.bot);
+    let game_copy:BotGameCopy = {...game};
+    if (score == 100)
+        return score;
+    if (score == -100)
+        return score;
+    if (depth <= 0)
+        return score;
+    
+    let i = 0,
+        l = 4;
+    if (max)
+    {
+        while (i < l)
+        {
+            Game.PlayerMove(i,game_copy.board,game_copy.piece_length,game_copy.bot,game_copy.human);
+            score = Math.max(score,MINIMAX(depth - 1,game_copy,!max));   
+            i++;
+        }
+    }
+    else
+    {
+        while (i < l)
+        {
+            Game.PlayerMove(i,game_copy.board,game_copy.piece_length,game_copy.bot,game_copy.human);
+            score = Math.min(score,MINIMAX(depth - 1,game_copy,!max));
+            i++;
+        }
+    }
+    return score;
+}
+function GET_BOT_MOVE (depth:number,game:BotGame)
+{
+    let game_copy:BotGameCopy = new BotGameCopy(game.board,game.piece_length,game.bot,game.human);
+    let i:number = 0,
+        l:number = 4;
+    let score:number = GAMESTATE_EVALUATOR(game_copy.board,game_copy.bot);
+    let result:Directions = Directions.down;
+    let new_score:number;
+    while (i < l)
+    {
+        new_score = MINIMAX(depth - 1,game_copy);
+        if (new_score > score)
+        {
+            result = i;
+            score = new_score;
+        }
+        i++;
+    }
+    return result;
+}
+//#endregion
+
 //#region GAME
 interface IGame
 {
@@ -714,24 +899,23 @@ interface IGame
     GetOtherPlayer(id:Players) : IPlayer;
     PlayerAttack(id:Players) : void;
     RoundEnd() : void;
-    turns_per_round:number;
     turn_player:number;
     deploying:boolean;
+    piece_length:number;
+    board:number[][];
 }
 abstract class Game
 {
     public board:number[][];
     public difficulty:Difficulties;
     public piece_length:number;
-    public turns_per_round:number;
-    public turn_counter:number;
+    public turn_counter:number = 1;
     public turn_player:Players = Players.human;
     public deploying:boolean = false;
     public deploy_counter:number = 0;
 
-    constructor(difficulty:Difficulties,board_size:number,turns_per_round:number)
+    constructor(difficulty:Difficulties,board_size:number)
     {
-        this.turns_per_round = turns_per_round;
         if (board_size < 6 || board_size % 3 != 0)
             DevelopmentError("Invalid board size");
         this.difficulty = difficulty;
@@ -807,11 +991,11 @@ abstract class Game
         return null;
     }
 
-    public CheckPositionBounds(x:number,y:number) : boolean
+    public static CheckPositionBounds(board:number[][],x:number,y:number) : boolean
     {
         if (
-            x < 0 || x >= this.board.length ||
-            y < 0 || y >= this.board.length
+            x < 0 || x >= board.length ||
+            y < 0 || y >= board.length
             )
             return false;
         return true;
@@ -824,10 +1008,9 @@ abstract class Game
 
     public TurnEnd() : void
     {
-        if (this.turn_counter >= this.turns_per_round)
-            this.RoundEnd(); 
         this.turn_counter++;
         this.PassTurn();
+        canvas_manager.ClearCanvas(CanvasLayers.foreground);
         this.DrawTiles();
         this.DrawPieces();
     }
@@ -914,7 +1097,7 @@ abstract class Game
                     ny = y + (direction_mult.y * j);
                     nx = x + (direction_mult.x * j);
                     console.log(nx,ny,piece.value,id);
-                    if (!this.CheckPositionBounds(nx,ny)) break;
+                    if (!Game.CheckPositionBounds(this.board,nx,ny)) break;
                     target = this.board[ny][nx];
                     if (target == Tiles.obstacle) break;
                     if (target > enemy_range_min && target <= enemy_range_max)
@@ -937,9 +1120,18 @@ abstract class Game
     }
 
     private PlayerInputMove(direction:Directions,id:Players) : void {
+        if (this.deploying)
+            return console.log("Deployment phase in progress.");
         if (this.turn_player != id)
             return console.log('Not turn player!');
-        this.PlayerMove(direction,id);
+        Game.PlayerMove(
+            direction,
+            this.board,
+            this.piece_length,
+            this.GetPlayer(id),
+            this.GetOtherPlayer(id)
+        );
+        this.TurnEnd();
     }
 
     private GetPlayerColor(id:Players)
@@ -951,7 +1143,9 @@ abstract class Game
 
     private PlayerInputDeploy(x:number,y:number,index:number,id:Players) : void
     {
-        if (!this.CheckPositionBounds(x,y)) return;
+        if (!this.deploying)
+            return console.log("Deployment phase in progress.");
+        if (!Game.CheckPositionBounds(this.board,x,y)) return;
         if (this.board[y][x] != this.GetPlayerColor(id)) return; //TODO: Handle invalid deploy input;
         let player:Player = this.GetPlayer(id);
         let pieces:GamePiece[] = player.pieces;
@@ -965,7 +1159,6 @@ abstract class Game
             {
                 piece.SetInitialPosition(x,y);
                 piece.SetValue(i + 1);
-                piece.SetDirection(player.last_direction);
                 this.board[y][x] = piece.GetBoardValue();
                 break;
             }
@@ -975,47 +1168,64 @@ abstract class Game
             this.EndDeployTurn();
     }
 
-    private PlayerMove(direction:Directions,id:Players) : void
+    public static PlayerMove(direction:Directions,board:number[][],piece_length:number,player:IPlayer | PlayerCopy,other_player:IPlayer | PlayerCopy) : void
     {
         let x = directions_multipliers[direction].x;
         let y = directions_multipliers[direction].y;
-        let player:IPlayer = this.GetPlayer(id);
-        let other_player:IPlayer = this.GetOtherPlayer(id);
         if (!player)
             DevelopmentError('Error player is not defined.');
-        let color:Tiles = id == Players.human ? Tiles.blue : Tiles.red;
-        let other_color:Tiles = id == Players.human ? Tiles.red : Tiles.blue;
+        let color:Tiles = player.color;
+        let other_color:Tiles = other_player.color;
         let i:number = 0,
             l:number = player.pieces_length,
             j:number = 0,
             k:number;
         let start_position:Vector2;
-        player.SetLastDirection(direction);
+        let enemy_range_min:number = other_player.piece_value_offset;
+        let enemy_range_max:number = enemy_range_min + piece_length;
         while (i < l)
         {
-            let piece:GamePiece = player.pieces[i++];
+            let piece:GamePiece | GamePieceCopy = player.pieces[i++];
             piece.direction = direction;
-            if (piece.active && piece.value % 2 != 0)
+            if (piece.active)
             {
                 start_position = piece.position.Clone();
                 j = 1;
-                k = piece.value == 1 ? this.board.length : piece.value;
+                k = piece.value == 1 ? board.length : piece.value;
                 while (j <= k)
                 {
                     let _x = start_position.x + (x * j);
                     let _y = start_position.y + (y * j);
-                    if (this.CheckPositionBounds(_x,_y))
+                    if (Game.CheckPositionBounds(board,_x,_y))
                     {
-                        let tile_val:number = this.board[_y][_x];
+                        let tile_val:number = board[_y][_x];
                         if (tile_val !== Tiles.blue && tile_val !== Tiles.red && tile_val !== Tiles.neutral)
+                        {
+                            if (piece.value !== 1 && tile_val > 0)
+                            {
+                                console.log(enemy_range_min,enemy_range_max,tile_val,piece.value);
+                                if (tile_val > enemy_range_min && tile_val <= enemy_range_max)
+                                {
+                                    if (tile_val - enemy_range_min <= piece.value)
+                                    {
+                                        other_player.pieces[tile_val - enemy_range_min - 1].SetActive(false);
+                                        other_player.AddTiles(-1,_x,_y);
+                                        player.AddTiles(1,_x,_y);
+                                        board[piece.position.y][piece.position.x] = color;
+                                        piece.SetPosition(_x,_y);
+                                        board[piece.position.y][piece.position.x] = piece.GetBoardValue();
+                                    }
+                                }
+                            }
                             break;
+                        }
                         else {
                             if (tile_val == other_color)
                                 other_player.AddTiles(-1,_x,_y);
                             player.AddTiles(1,_x,_y);
-                            this.board[piece.position.y][piece.position.x] = color;
+                            board[piece.position.y][piece.position.x] = color;
                             piece.SetPosition(_x,_y);
-                            this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
+                            board[piece.position.y][piece.position.x] = piece.GetBoardValue();
                         }
                     } 
                     j++;
@@ -1027,14 +1237,14 @@ abstract class Game
 
 class BotGame  extends Game implements IGame
 {
-    private human:IPlayer;
-    private bot:BotPlayer;
+    public human:IPlayer;
+    public bot:BotPlayer;
     private botTurn:boolean = false;
     private draw_tiles_event_id:number;
     private draw_pieces_event_id:number;
     constructor(difficulty:Difficulties)
     {
-        super(difficulty,12,3);
+        super(difficulty,9);
         this.piece_length = 5;
         if (!this.piece_length || this.piece_length <= 0)
             DevelopmentError("Piece length is not valid");
