@@ -11,13 +11,6 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
-var __spreadArrays = (this && this.__spreadArrays) || function () {
-    for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
-    for (var r = Array(s), k = 0, i = 0; i < il; i++)
-        for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
-            r[k] = a[j];
-    return r;
-};
 var _a;
 var in_development = true;
 var game_manager;
@@ -432,7 +425,7 @@ var Player = /** @class */ (function () {
             }
         })(pieces_length);
     }
-    Player.prototype.turn_end = function () {
+    Player.prototype.TurnEnd = function () {
         var i = 0, l = this.pieces.length;
         while (i < l)
             this.pieces[i++].cooldown--;
@@ -484,15 +477,11 @@ var BotPlayer = /** @class */ (function (_super) {
 }(Player));
 //#endregion
 //#region MINIMAX
-function GAMESTATE_EVALUATOR(board, player) {
+function GAMESTATE_EVALUATOR(board, pieces_length) {
     var player_score = 0;
     var other_score = 0;
     var player_pieces = 0;
     var other_pieces = 0;
-    var piece_inf_limit = player.piece_value_offset, piece_sup_limit = piece_inf_limit + player.pieces.length + 1;
-    var result = 0;
-    var color = player.color;
-    var other_color = color == -2 /* red */ ? -1 /* blue */ : -2 /* red */;
     var x = 0, y = 0, l = board.length;
     var tile;
     var sub_value;
@@ -501,36 +490,35 @@ function GAMESTATE_EVALUATOR(board, player) {
         while (x < l) {
             tile = board[y][x];
             if (tile > 0) {
-                if (tile > piece_inf_limit && tile <= piece_sup_limit) {
-                    sub_value = (piece_sup_limit == 0 ? 0 : piece_inf_limit);
-                    if (tile - sub_value == 1)
-                        player_score += 10;
+                if (tile <= pieces_length) {
+                    if (tile == 1)
+                        other_score += board.length;
                     else
-                        player_score += (tile - sub_value) * 2;
-                    player_pieces++;
-                }
-                else {
-                    sub_value = (piece_sup_limit == 0 ? piece_inf_limit : 0);
-                    if (tile - sub_value == 1)
-                        other_score -= 10;
-                    else
-                        other_score -= (tile - sub_value) * 2;
+                        other_score += tile * 2;
                     other_pieces++;
                 }
+                else {
+                    var value = tile - pieces_length;
+                    if (value == 1)
+                        player_score += board.length;
+                    else
+                        player_score += value * 2;
+                    player_pieces++;
+                }
             }
-            else if (tile == color)
+            else if (tile == -2 /* red */)
                 player_score++;
-            else if (tile == other_color)
-                other_score--;
+            else if (tile == -1 /* blue */)
+                other_score++;
             x++;
         }
         y++;
     }
     if (player_pieces == 0)
-        return -100;
+        return -1000;
     else if (other_pieces == 0)
-        return 100;
-    return player_score + other_score;
+        return 1000;
+    return player_score - other_score;
 }
 var BotGameCopy = /** @class */ (function () {
     function BotGameCopy(game) {
@@ -562,17 +550,18 @@ var PlayerCopy = /** @class */ (function () {
 }());
 var GamePieceCopy = /** @class */ (function () {
     function GamePieceCopy(piece) {
-        this.position = piece.position.Clone();
+        this.position = new Vector2(piece.position.x, piece.position.y);
         this.active = piece.active;
         this.value = piece.value;
         this.piece_value_offset = piece.piece_value_offset;
-        this.board_value = piece.piece_value_offset + this.value;
+        this.board_value = piece.piece_value_offset + piece.value;
     }
     GamePieceCopy.prototype.SetActive = function (b) {
         this.active = b;
     };
     GamePieceCopy.prototype.SetPosition = function (x, y) {
-        this.position = new Vector2(x, y);
+        this.position.x = x;
+        this.position.y = y;
     };
     GamePieceCopy.prototype.GetBoardValue = function () {
         return this.board_value;
@@ -580,61 +569,90 @@ var GamePieceCopy = /** @class */ (function () {
     return GamePieceCopy;
 }());
 function BoardCopy(board) {
-    var i = 0, l = board.length;
+    var x = 0, y = 0, l = board.length;
     var result = [];
     result.length = l;
-    while (i < l) {
-        result[i] = __spreadArrays(board[i]);
-        i++;
+    while (y < l) {
+        result[y] = [];
+        x = 0;
+        while (x < l) {
+            result[y][x] = board[y][x];
+            x++;
+        }
+        y++;
     }
     return result;
 }
 function MINIMAX(depth, game, max) {
     if (max === void 0) { max = false; }
-    var score = GAMESTATE_EVALUATOR(game.board, game.bot);
-    var game_copy = new BotGameCopy(game);
-    if (score == 100)
+    var score = GAMESTATE_EVALUATOR(game.board, game.piece_length);
+    var game_copy;
+    if (score == 1000)
         return score;
-    if (score == -100)
+    if (score == -1000)
         return score;
     if (depth <= 0)
         return score;
     var i = 0, l = 4;
     if (max) {
         while (i < l) {
+            game_copy = new BotGameCopy(game);
             Game.PlayerMove(i++, game_copy.board, game_copy.piece_length, game_copy.bot, game_copy.human);
             score = Math.max(score, MINIMAX(depth - 1, game_copy, !max));
         }
     }
     else {
         while (i < l) {
+            game_copy = new BotGameCopy(game);
             Game.PlayerMove(i++, game_copy.board, game_copy.piece_length, game_copy.human, game_copy.bot);
             score = Math.min(score, MINIMAX(depth - 1, game_copy, !max));
         }
     }
     return score;
 }
+function COUNT_PIECES(board, pieces_length) {
+    var human_count = 0, bot_count = 0;
+    var x = 0, y = 0, l = board.length;
+    while (y < l) {
+        x = 0;
+        while (x < l) {
+            var tile = board[y][x++];
+            if (tile > 0) {
+                if (tile <= pieces_length) {
+                    human_count++;
+                }
+                else
+                    bot_count++;
+            }
+        }
+        y++;
+    }
+    console.log("Pieces Count: (human = " + human_count + " | bot = " + bot_count + ");");
+    return { human_count: human_count, bot_count: bot_count };
+}
 function BOT_MOVE(depth, game) {
     var bot = game.bot;
     var pieces = bot.pieces;
     var game_copy = new BotGameCopy(game);
     var i = 0, l = pieces.length;
-    var score = GAMESTATE_EVALUATOR(game_copy.board, game_copy.bot);
+    var score = -1000; // GAMESTATE_EVALUATOR(game_copy.board,game_copy.bot);
     var result = 2 /* down */;
     var new_score;
     var summon_piece_index = null;
     var summon_piece_score = score;
     var summon_piece_position = null;
-    while (i < l) {
-        var piece = pieces[i];
-        if (piece && !piece.active && piece.cooldown <= 0) {
-            summon_piece_index = i;
-            break;
-        }
-        i++;
-    }
+    // while (i < l)
+    // {
+    //     let piece:GamePiece = pieces[i];
+    //     if (piece && !piece.active && piece.cooldown <= 0)
+    //     {
+    //         summon_piece_index = i;
+    //         break;
+    //     }
+    //     i++;
+    // }
     console.log(summon_piece_index, "summon_piece_index");
-    if (summon_piece_index !== null) {
+    if ( /*summon_piece_index !== null*/false) {
         i = 0;
         l = bot.tiles_arr.length;
         while (i < l) {
@@ -652,15 +670,13 @@ function BOT_MOVE(depth, game) {
     i = 0;
     l = 4;
     while (i < l) {
-        var temp = BoardCopy(game_copy.board);
+        game_copy = new BotGameCopy(game);
         Game.PlayerMove(i, game_copy.board, game_copy.piece_length, game_copy.bot, game_copy.human);
-        console.log(game_copy.board[1][5], temp[1][5]);
         new_score = MINIMAX(depth - 1, game_copy);
         if (new_score > score) {
             result = i;
             score = new_score;
         }
-        game_copy.board = temp;
         i++;
     }
     if (summon_piece_index !== null) {
@@ -819,11 +835,9 @@ var Game = /** @class */ (function () {
     Game.PlayerMove = function (direction, board, piece_length, player, other_player) {
         var x = directions_multipliers[direction].x;
         var y = directions_multipliers[direction].y;
-        if (!player || !other_player)
-            DevelopmentError('Error player is not defined.');
         var color = player.color;
         var other_color = other_player.color;
-        var i = 0, l = player.pieces.length, j = 0, k;
+        var i = 0, l = player.pieces.length, j, k;
         var start_position;
         var enemy_range_min = other_player.piece_value_offset;
         var enemy_range_max = enemy_range_min + piece_length;
@@ -839,8 +853,8 @@ var Game = /** @class */ (function () {
                     var _y = start_position.y + (y * j);
                     if (Game.CheckPositionBounds(board, _x, _y)) {
                         var tile_val = board[_y][_x];
-                        if (tile_val !== -1 /* blue */ && tile_val !== -2 /* red */ && tile_val !== 0 /* neutral */) {
-                            if (piece.value !== 1 && tile_val > 0) {
+                        if (tile_val > 0) {
+                            if (piece.value !== 1) {
                                 if (tile_val > enemy_range_min && tile_val <= enemy_range_max) {
                                     if (tile_val - enemy_range_min <= piece.value) {
                                         other_player.pieces[tile_val - enemy_range_min - 1].SetActive(false);
@@ -854,7 +868,7 @@ var Game = /** @class */ (function () {
                             }
                             break;
                         }
-                        else {
+                        else if (tile_val !== -3 /* obstacle */) {
                             if (tile_val === other_color)
                                 other_player.AddTiles(-1, _x, _y);
                             player.AddTiles(1, _x, _y);
@@ -862,7 +876,11 @@ var Game = /** @class */ (function () {
                             piece.SetPosition(_x, _y);
                             board[piece.position.y][piece.position.x] = piece.GetBoardValue();
                         }
+                        else
+                            break;
                     }
+                    else
+                        break;
                     j++;
                 }
             }
@@ -931,13 +949,16 @@ var BotGame = /** @class */ (function (_super) {
     }
     BotGame.prototype.PassTurn = function () {
         var _this = this;
-        if (this.turn_player === 1 /* bot */)
+        if (this.turn_player === 1 /* bot */) {
+            this.bot.TurnEnd();
             this.turn_player = 0 /* human */;
+        }
         else {
+            this.human.TurnEnd();
             this.turn_player = 1 /* bot */;
             setTimeout(function () {
                 BOT_MOVE((_this.difficulty + 1) * 2, _this);
-            }, 3000);
+            }, 1800);
         }
     };
     BotGame.prototype.DrawPieces = function () {
