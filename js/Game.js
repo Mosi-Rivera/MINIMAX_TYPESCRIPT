@@ -11,16 +11,12 @@ var __extends = (this && this.__extends) || (function () {
         d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
     };
 })();
-var __assign = (this && this.__assign) || function () {
-    __assign = Object.assign || function(t) {
-        for (var s, i = 1, n = arguments.length; i < n; i++) {
-            s = arguments[i];
-            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p))
-                t[p] = s[p];
-        }
-        return t;
-    };
-    return __assign.apply(this, arguments);
+var __spreadArrays = (this && this.__spreadArrays) || function () {
+    for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+    for (var r = Array(s), k = 0, i = 0; i < il; i++)
+        for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+            r[k] = a[j];
+    return r;
 };
 var _a;
 var in_development = true;
@@ -333,7 +329,7 @@ var GameManager = /** @class */ (function () {
     return GameManager;
 }());
 var GamePiece = /** @class */ (function () {
-    function GamePiece(active, piece_value_offset) {
+    function GamePiece(active, piece_value_offset, value) {
         this.direction = 0 /* up */;
         this.combat_end_events = [];
         this.turn_start_events = [];
@@ -352,6 +348,10 @@ var GamePiece = /** @class */ (function () {
         this.lerpTimer = 0;
         this.active = active;
         this.piece_value_offset = piece_value_offset;
+        this.value = value;
+        this.draw_text = value.toString();
+        this.cooldown = value - 1;
+        this.base_cooldown = this.cooldown;
     }
     GamePiece.prototype.SetDirection = function (direction) {
         this.direction = direction;
@@ -408,6 +408,9 @@ var GamePiece = /** @class */ (function () {
     };
     GamePiece.prototype.SetActive = function (b) {
         this.active = b;
+        if (!b) {
+            this.cooldown = this.base_cooldown;
+        }
     };
     GamePiece.prototype.SetValue = function (n) {
         this.value = n;
@@ -424,11 +427,16 @@ var Player = /** @class */ (function () {
         this.pieces_length = pieces_length;
         (function (l) {
             _this.pieces = [];
-            while (l-- > 0) {
-                _this.pieces.push(new GamePiece(false, piece_value_offset));
+            while (l > 0) {
+                _this.pieces.push(new GamePiece(false, piece_value_offset, (pieces_length - l--) + 1));
             }
         })(pieces_length);
     }
+    Player.prototype.turn_end = function () {
+        var i = 0, l = this.pieces.length;
+        while (i < l)
+            this.pieces[i++].cooldown--;
+    };
     Player.prototype.RoundEnd = function () {
         var i = 0, l = this.pieces.length;
         while (i < l) {
@@ -525,21 +533,11 @@ function GAMESTATE_EVALUATOR(board, player) {
     return player_score + other_score;
 }
 var BotGameCopy = /** @class */ (function () {
-    function BotGameCopy(board, piece_length, bot, human) {
-        this.board = [];
-        var x = 0, y = 0, l = board.length;
-        while (y < l) {
-            this.board.push([]);
-            x = 0;
-            while (x < l) {
-                this.board[y][x] = board[y][x];
-                x++;
-            }
-            y++;
-        }
-        this.piece_length = piece_length;
-        this.bot = new PlayerCopy(bot);
-        this.human = new PlayerCopy(human);
+    function BotGameCopy(game) {
+        this.board = BoardCopy(game.board);
+        this.piece_length = game.piece_length;
+        this.bot = new PlayerCopy(game.bot);
+        this.human = new PlayerCopy(game.human);
     }
     return BotGameCopy;
 }());
@@ -552,8 +550,10 @@ var PlayerCopy = /** @class */ (function () {
         var i = 0, l = player.pieces.length;
         this.pieces = [];
         this.pieces.length = l;
-        while (i < l)
-            this.pieces[i] = new GamePieceCopy(player.pieces[i], i++);
+        while (i < l) {
+            this.pieces[i] = new GamePieceCopy(player.pieces[i]);
+            i++;
+        }
     }
     PlayerCopy.prototype.AddTiles = function (n, x, y) {
         this.tiles += n;
@@ -561,10 +561,11 @@ var PlayerCopy = /** @class */ (function () {
     return PlayerCopy;
 }());
 var GamePieceCopy = /** @class */ (function () {
-    function GamePieceCopy(piece, value) {
-        this.position = piece.position;
+    function GamePieceCopy(piece) {
+        this.position = piece.position.Clone();
         this.active = piece.active;
-        this.value = value;
+        this.value = piece.value;
+        this.piece_value_offset = piece.piece_value_offset;
         this.board_value = piece.piece_value_offset + this.value;
     }
     GamePieceCopy.prototype.SetActive = function (b) {
@@ -578,10 +579,20 @@ var GamePieceCopy = /** @class */ (function () {
     };
     return GamePieceCopy;
 }());
+function BoardCopy(board) {
+    var i = 0, l = board.length;
+    var result = [];
+    result.length = l;
+    while (i < l) {
+        result[i] = __spreadArrays(board[i]);
+        i++;
+    }
+    return result;
+}
 function MINIMAX(depth, game, max) {
-    if (max === void 0) { max = true; }
+    if (max === void 0) { max = false; }
     var score = GAMESTATE_EVALUATOR(game.board, game.bot);
-    var game_copy = __assign({}, game);
+    var game_copy = new BotGameCopy(game);
     if (score == 100)
         return score;
     if (score == -100)
@@ -591,35 +602,76 @@ function MINIMAX(depth, game, max) {
     var i = 0, l = 4;
     if (max) {
         while (i < l) {
-            Game.PlayerMove(i, game_copy.board, game_copy.piece_length, game_copy.bot, game_copy.human);
+            Game.PlayerMove(i++, game_copy.board, game_copy.piece_length, game_copy.bot, game_copy.human);
             score = Math.max(score, MINIMAX(depth - 1, game_copy, !max));
-            i++;
         }
     }
     else {
         while (i < l) {
-            Game.PlayerMove(i, game_copy.board, game_copy.piece_length, game_copy.bot, game_copy.human);
+            Game.PlayerMove(i++, game_copy.board, game_copy.piece_length, game_copy.human, game_copy.bot);
             score = Math.min(score, MINIMAX(depth - 1, game_copy, !max));
-            i++;
         }
     }
     return score;
 }
-function GET_BOT_MOVE(depth, game) {
-    var game_copy = new BotGameCopy(game.board, game.piece_length, game.bot, game.human);
-    var i = 0, l = 4;
+function BOT_MOVE(depth, game) {
+    var bot = game.bot;
+    var pieces = bot.pieces;
+    var game_copy = new BotGameCopy(game);
+    var i = 0, l = pieces.length;
     var score = GAMESTATE_EVALUATOR(game_copy.board, game_copy.bot);
     var result = 2 /* down */;
     var new_score;
+    var summon_piece_index = null;
+    var summon_piece_score = score;
+    var summon_piece_position = null;
     while (i < l) {
+        var piece = pieces[i];
+        if (piece && !piece.active && piece.cooldown <= 0) {
+            summon_piece_index = i;
+            break;
+        }
+        i++;
+    }
+    console.log(summon_piece_index, "summon_piece_index");
+    if (summon_piece_index !== null) {
+        i = 0;
+        l = bot.tiles_arr.length;
+        while (i < l) {
+            var tile = bot.tiles_arr[i++];
+            var temp = game_copy.board[tile.y][tile.x];
+            game_copy.board[tile.y][tile.x] = pieces[summon_piece_index].GetBoardValue();
+            new_score = MINIMAX(depth - 1, game_copy);
+            if (new_score > summon_piece_score) {
+                summon_piece_position = tile.Clone();
+                summon_piece_score = new_score;
+            }
+            game_copy.board[tile.y][tile.x] = temp;
+        }
+    }
+    i = 0;
+    l = 4;
+    while (i < l) {
+        var temp = BoardCopy(game_copy.board);
+        Game.PlayerMove(i, game_copy.board, game_copy.piece_length, game_copy.bot, game_copy.human);
+        console.log(game_copy.board[1][5], temp[1][5]);
         new_score = MINIMAX(depth - 1, game_copy);
         if (new_score > score) {
             result = i;
             score = new_score;
         }
+        game_copy.board = temp;
         i++;
     }
-    return result;
+    if (summon_piece_index !== null) {
+        if (summon_piece_score > score) {
+            game.PlayerDeploy(1 /* bot */, summon_piece_position.x, summon_piece_position.y, summon_piece_index);
+            game.PassTurn();
+            return;
+        }
+    }
+    Game.PlayerMove(result, game.board, game.piece_length, game.bot, game.human);
+    game.TurnEnd();
 }
 var Game = /** @class */ (function () {
     function Game(difficulty, board_size) {
@@ -701,38 +753,6 @@ var Game = /** @class */ (function () {
     Game.prototype.ResetTurnCounter = function () {
         this.turn_counter = 1;
     };
-    Game.prototype.RoundEnd = function () {
-        this.PlayerAttack(1 /* bot */);
-        this.PlayerAttack(0 /* human */);
-        this.GetPlayer(1 /* bot */).RoundEnd();
-        this.GetPlayer(0 /* human */).RoundEnd();
-        this.ResetTurnCounter();
-        this.StartDeployTurn();
-    };
-    Game.prototype.StartDeployTurn = function () {
-        this.deploy_counter = 0;
-        this.deploying = true;
-        if (!this.CheckPlayerCanDeploy(0 /* human */))
-            this.deploy_counter++;
-        if (!this.CheckPlayerCanDeploy(1 /* bot */))
-            this.deploy_counter++;
-        if (this.deploy_counter >= 2)
-            this.EndDeployTurn();
-    };
-    Game.prototype.CheckPlayerCanDeploy = function (id) {
-        var player = this.GetPlayer(id);
-        var pieces = player.pieces;
-        var i = 0, l = player.pieces.length;
-        while (i < l) {
-            if (!pieces[i++].active) {
-                return true;
-            }
-        }
-        return false;
-    };
-    Game.prototype.EndDeployTurn = function () {
-        this.deploying = false;
-    };
     Game.prototype.PlayerAttack = function (id) {
         var player = this.GetPlayer(id);
         var other_player = this.GetOtherPlayer(id);
@@ -753,10 +773,8 @@ var Game = /** @class */ (function () {
                 k = piece.value;
                 direction_mult = directions_multipliers[piece.direction];
                 while (j <= k) {
-                    console.log(j);
                     ny = y + (direction_mult.y * j);
                     nx = x + (direction_mult.x * j);
-                    console.log(nx, ny, piece.value, id);
                     if (!Game.CheckPositionBounds(this.board, nx, ny))
                         break;
                     target = this.board[ny][nx];
@@ -784,42 +802,28 @@ var Game = /** @class */ (function () {
         this.TurnEnd();
     };
     Game.prototype.GetPlayerColor = function (id) {
-        if (id == 0 /* human */)
-            return -1 /* blue */;
-        return -2 /* red */;
+        return this.GetPlayer(id).color;
     };
-    Game.prototype.PlayerInputDeploy = function (x, y, index, id) {
-        if (!this.deploying)
-            return console.log("Deployment phase in progress.");
-        if (!Game.CheckPositionBounds(this.board, x, y))
-            return;
-        if (this.board[y][x] != this.GetPlayerColor(id))
-            return; //TODO: Handle invalid deploy input;
+    Game.prototype.PlayerDeploy = function (id, x, y, piece_index) {
+        if (this.turn_player != id)
+            return console.log("Not turn player");
         var player = this.GetPlayer(id);
-        var pieces = player.pieces;
-        var i = 0, l = pieces.length;
-        var piece;
-        while (i < l) {
-            piece = pieces[i++];
-            if (!piece.active) {
-                piece.SetInitialPosition(x, y);
-                piece.SetValue(i + 1);
-                this.board[y][x] = piece.GetBoardValue();
-                break;
-            }
-        }
-        this.deploy_counter++;
-        if (this.deploy_counter >= 0)
-            this.EndDeployTurn();
+        if (this.board[y][x] !== player.color)
+            return DevelopmentError("Invalid deploy position!");
+        var piece = player.pieces[piece_index];
+        if (!piece && piece.active)
+            return DevelopmentError("Invalid piece index");
+        piece.SetActive(true);
+        this.board[y][x] = piece.GetBoardValue();
     };
     Game.PlayerMove = function (direction, board, piece_length, player, other_player) {
         var x = directions_multipliers[direction].x;
         var y = directions_multipliers[direction].y;
-        if (!player)
+        if (!player || !other_player)
             DevelopmentError('Error player is not defined.');
         var color = player.color;
         var other_color = other_player.color;
-        var i = 0, l = player.pieces_length, j = 0, k;
+        var i = 0, l = player.pieces.length, j = 0, k;
         var start_position;
         var enemy_range_min = other_player.piece_value_offset;
         var enemy_range_max = enemy_range_min + piece_length;
@@ -837,7 +841,6 @@ var Game = /** @class */ (function () {
                         var tile_val = board[_y][_x];
                         if (tile_val !== -1 /* blue */ && tile_val !== -2 /* red */ && tile_val !== 0 /* neutral */) {
                             if (piece.value !== 1 && tile_val > 0) {
-                                console.log(enemy_range_min, enemy_range_max, tile_val, piece.value);
                                 if (tile_val > enemy_range_min && tile_val <= enemy_range_max) {
                                     if (tile_val - enemy_range_min <= piece.value) {
                                         other_player.pieces[tile_val - enemy_range_min - 1].SetActive(false);
@@ -852,7 +855,7 @@ var Game = /** @class */ (function () {
                             break;
                         }
                         else {
-                            if (tile_val == other_color)
+                            if (tile_val === other_color)
                                 other_player.AddTiles(-1, _x, _y);
                             player.AddTiles(1, _x, _y);
                             board[piece.position.y][piece.position.x] = color;
@@ -887,7 +890,6 @@ var BotGame = /** @class */ (function (_super) {
             piece.SetDirection(2 /* down */);
             piece.SetActive(true);
             piece.SetInitialPosition(Math.floor(_this.board[0].length / 2) - 1, _this.board.length - yDif);
-            piece.SetValue(1);
             _this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
             piece = _this.bot.pieces[0];
             _x = Math.floor(_this.board[0].length / 2) + (width_is_even ? 0 : 1);
@@ -895,7 +897,6 @@ var BotGame = /** @class */ (function (_super) {
             piece.SetDirection(0 /* up */);
             piece.SetActive(true);
             piece.SetInitialPosition(_x, _y);
-            piece.SetValue(1);
             _this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
             _this.bot.AddTiles(0, _x, _y);
         }
@@ -929,10 +930,15 @@ var BotGame = /** @class */ (function (_super) {
         return _this;
     }
     BotGame.prototype.PassTurn = function () {
-        if (this.turn_player == 1 /* bot */)
+        var _this = this;
+        if (this.turn_player === 1 /* bot */)
             this.turn_player = 0 /* human */;
-        else
+        else {
             this.turn_player = 1 /* bot */;
+            setTimeout(function () {
+                BOT_MOVE((_this.difficulty + 1) * 2, _this);
+            }, 3000);
+        }
     };
     BotGame.prototype.DrawPieces = function () {
         var i = 0, l = this.piece_length;
@@ -949,12 +955,12 @@ var BotGame = /** @class */ (function (_super) {
         }
     };
     BotGame.prototype.GetPlayer = function (id) {
-        if (id == 1 /* bot */)
+        if (id === 1 /* bot */)
             return this.bot;
         return this.human;
     };
     BotGame.prototype.GetOtherPlayer = function (id) {
-        if (id == 1 /* bot */)
+        if (id === 1 /* bot */)
             return this.human;
         return this.bot;
     };
@@ -972,13 +978,13 @@ var AppManager = /** @class */ (function () {
     function AppManager() {
         var _this = this;
         this.game_type = 0 /* bot */;
-        this.difficulty = 0 /* easy */;
+        this.difficulty = 1 /* easy */;
         this.buttonEasy = document.getElementById('button-easy');
         this.buttonHard = document.getElementById('button-hard');
         this.buttonInsane = document.getElementById('button-insane');
-        this.buttonEasy.onclick = function () { return _this.SetDifficulty(0 /* easy */); };
-        this.buttonHard.onclick = function () { return _this.SetDifficulty(1 /* hard */); };
-        this.buttonInsane.onclick = function () { return _this.SetDifficulty(2 /* insane */); };
+        this.buttonEasy.onclick = function () { return _this.SetDifficulty(1 /* easy */); };
+        this.buttonHard.onclick = function () { return _this.SetDifficulty(2 /* hard */); };
+        this.buttonInsane.onclick = function () { return _this.SetDifficulty(3 /* insane */); };
     }
     AppManager.prototype.GetGame = function () {
         if (this.game_type == 0 /* bot */)

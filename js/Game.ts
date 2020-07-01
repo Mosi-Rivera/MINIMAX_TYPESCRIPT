@@ -192,7 +192,7 @@ const directions_multipliers:{[key:string]: Vector2} = {
 
 const enum Difficulties
 {
-    easy = 0,
+    easy = 1,
     hard,
     insane
 }
@@ -495,6 +495,7 @@ interface IGamePiece
     round_end_events:InvokableEvent[];
     on_enter_events:InvokableEvent[];
     on_leave_events:InvokableEvent[];
+    cooldown:number;
     SetPosition(x:number,y:number) : void;
     SetActive(b:boolean) : void;
     SetValue(n:number) : void;
@@ -524,11 +525,17 @@ class GamePiece implements IGamePiece, IDrawable
     public active               : boolean = false;
     public lerpTimer            : number  = 0;
     public piece_value_offset   : number;
+    public cooldown             : number;
+    private base_cooldown        : number;
     
-    constructor(active:boolean,piece_value_offset:number) 
+    constructor(active:boolean,piece_value_offset:number,value:number) 
     {
         this.active = active;
         this.piece_value_offset = piece_value_offset;
+        this.value = value;
+        this.draw_text = value.toString();
+        this.cooldown = value - 1;
+        this.base_cooldown = this.cooldown;
     }
 
     SetDirection(direction:Directions)
@@ -605,6 +612,10 @@ class GamePiece implements IGamePiece, IDrawable
     SetActive(b:boolean)
     {
         this.active = b;
+        if (!b)
+        {
+            this.cooldown = this.base_cooldown;
+        }
     }
 
     SetValue(n:number)
@@ -641,11 +652,19 @@ abstract class Player {
             (l:number) =>
             {
                 this.pieces = [];
-                while (l-- > 0) {
-                    this.pieces.push(new GamePiece(false,piece_value_offset));
+                while (l > 0) {
+                    this.pieces.push(new GamePiece(false,piece_value_offset,(pieces_length - l--) + 1));
                 }
             }
         )(pieces_length);
+    }
+
+    public turn_end ()
+    {
+        let i = 0,
+            l = this.pieces.length;
+        while (i < l)
+            this.pieces[i++].cooldown--;
     }
 
     public RoundEnd() : void
@@ -677,7 +696,7 @@ class HumanPlayer extends Player implements IPlayer
 
 class BotPlayer extends Player implements IPlayer
 {
-    private tiles_arr:Vector2[] = [];
+    public tiles_arr:Vector2[] = [];
 
     constructor(pieces_length:number,piece_value_offset:number)
     {
@@ -762,25 +781,11 @@ class BotGameCopy
     piece_length:number;
     human:PlayerCopy;
     bot:PlayerCopy;
-    constructor(board:number[][],piece_length:number,bot:IPlayer,human:IPlayer) {
-        this.board = [];
-        let x = 0,
-            y = 0,
-            l = board.length;
-        while(y < l)
-        {
-            this.board.push([]);
-            x = 0;
-            while (x < l)
-            {
-                this.board[y][x] = board[y][x];
-                x++;
-            }
-            y++;
-        }
-        this.piece_length = piece_length;
-        this.bot = new PlayerCopy(bot);
-        this.human = new PlayerCopy(human);
+    constructor(game:BotGame | BotGameCopy) {
+        this.board = BoardCopy(game.board);
+        this.piece_length = game.piece_length;
+        this.bot = new PlayerCopy(game.bot);
+        this.human = new PlayerCopy(game.human);
     }
 }
 class PlayerCopy
@@ -790,7 +795,7 @@ class PlayerCopy
     pieces:GamePieceCopy[];
     tiles:number;
     color:Tiles;
-    constructor(player:IPlayer)
+    constructor(player:IPlayer | PlayerCopy)
     {
         this.color = player.color;
         this.tiles = player.tiles;
@@ -800,8 +805,10 @@ class PlayerCopy
             l = player.pieces.length;
         this.pieces = [];
         this.pieces.length = l;
-        while (i < l)
-            this.pieces[i] = new GamePieceCopy(player.pieces[i],i++);
+        while (i < l) {
+            this.pieces[i] = new GamePieceCopy(player.pieces[i]);
+            i++;
+        }
     }
     AddTiles(n:number,x:number,y:number)
     {
@@ -815,11 +822,13 @@ class GamePieceCopy
     active:boolean;
     value:number;
     board_value:number;
-    constructor(piece:GamePiece,value:number)
+    piece_value_offset:number;
+    constructor(piece:GamePiece | GamePieceCopy)
     {
-        this.position = piece.position;
+        this.position = piece.position.Clone();
         this.active = piece.active;
-        this.value = value;
+        this.value = piece.value;
+        this.piece_value_offset = piece.piece_value_offset;
         this.board_value = piece.piece_value_offset + this.value;
     }
     SetActive(b:boolean) : void
@@ -835,10 +844,22 @@ class GamePieceCopy
         return this.board_value;
     }
 }
-function MINIMAX(depth:number,game:BotGameCopy,max:boolean = true) : Directions
+function BoardCopy(board:number[][]) : number[][]
+{
+    let i = 0,
+    l = board.length;
+    let result = [];
+    result.length = l;
+    while(i < l) {
+        result[i] = [...board[i]];
+        i++
+    }
+    return result;
+}
+function MINIMAX(depth:number,game:BotGameCopy,max:boolean = false) : number
 {
     let score:number = GAMESTATE_EVALUATOR(game.board,game.bot);
-    let game_copy:BotGameCopy = {...game};
+    let game_copy:BotGameCopy = new BotGameCopy(game);
     if (score == 100)
         return score;
     if (score == -100)
@@ -846,47 +867,101 @@ function MINIMAX(depth:number,game:BotGameCopy,max:boolean = true) : Directions
     if (depth <= 0)
         return score;
     
-    let i = 0,
-        l = 4;
+    let i:number = 0,
+        l:number = 4;
     if (max)
     {
         while (i < l)
         {
-            Game.PlayerMove(i,game_copy.board,game_copy.piece_length,game_copy.bot,game_copy.human);
-            score = Math.max(score,MINIMAX(depth - 1,game_copy,!max));   
-            i++;
+            Game.PlayerMove(i++,game_copy.board,game_copy.piece_length,game_copy.bot,game_copy.human);
+            score = Math.max(score,MINIMAX(depth - 1,game_copy,!max));
         }
     }
     else
     {
         while (i < l)
         {
-            Game.PlayerMove(i,game_copy.board,game_copy.piece_length,game_copy.bot,game_copy.human);
+            Game.PlayerMove(i++,game_copy.board,game_copy.piece_length,game_copy.human,game_copy.bot);
             score = Math.min(score,MINIMAX(depth - 1,game_copy,!max));
-            i++;
         }
     }
     return score;
 }
-function GET_BOT_MOVE (depth:number,game:BotGame)
+function BOT_MOVE (depth:number,game:BotGame)
 {
-    let game_copy:BotGameCopy = new BotGameCopy(game.board,game.piece_length,game.bot,game.human);
+    let bot:BotPlayer = game.bot;
+    let pieces:GamePiece[] = bot.pieces;
+    let game_copy:BotGameCopy = new BotGameCopy(game);
     let i:number = 0,
-        l:number = 4;
+        l:number = pieces.length;
     let score:number = GAMESTATE_EVALUATOR(game_copy.board,game_copy.bot);
     let result:Directions = Directions.down;
     let new_score:number;
+    let summon_piece_index:number = null;
+    let summon_piece_score:number = score;
+    let summon_piece_position:Vector2 = null;
     while (i < l)
     {
+        let piece:GamePiece = pieces[i];
+        if (piece && !piece.active && piece.cooldown <= 0)
+        {
+            summon_piece_index = i;
+            break;
+        }
+        i++;
+    }
+    console.log(summon_piece_index,"summon_piece_index");
+    if (summon_piece_index !== null)
+    {
+        i = 0;
+        l = bot.tiles_arr.length;
+        while (i < l)
+        {
+            let tile:Vector2  = bot.tiles_arr[i++];
+            let temp = game_copy.board[tile.y][tile.x];
+            game_copy.board[tile.y][tile.x] = pieces[summon_piece_index].GetBoardValue();
+            new_score = MINIMAX(depth - 1,game_copy);
+            if (new_score > summon_piece_score)
+            {
+                summon_piece_position = tile.Clone();
+                summon_piece_score = new_score;
+            }
+            game_copy.board[tile.y][tile.x] = temp;
+        }
+    }
+    i = 0;
+    l = 4;
+    while (i < l)
+    {
+        let temp:number[][] = BoardCopy(game_copy.board);
+        Game.PlayerMove(
+            i,
+            game_copy.board,
+            game_copy.piece_length,
+            game_copy.bot,
+            game_copy.human
+        );
+        console.log(game_copy.board[1][5],temp[1][5]);
         new_score = MINIMAX(depth - 1,game_copy);
         if (new_score > score)
         {
             result = i;
             score = new_score;
         }
+        game_copy.board = temp;
         i++;
     }
-    return result;
+    if (summon_piece_index !== null)
+    {
+        if (summon_piece_score > score)
+        {
+            game.PlayerDeploy(Players.bot,summon_piece_position.x,summon_piece_position.y,summon_piece_index);
+            game.PassTurn();
+            return;
+        }
+    }
+    Game.PlayerMove(result,game.board,game.piece_length,game.bot,game.human);
+    game.TurnEnd();
 }
 //#endregion
 
@@ -897,10 +972,7 @@ interface IGame
     PlayerAction(action:number) : void;
     GetPlayer(id:Players) : IPlayer;
     GetOtherPlayer(id:Players) : IPlayer;
-    PlayerAttack(id:Players) : void;
-    RoundEnd() : void;
     turn_player:number;
-    deploying:boolean;
     piece_length:number;
     board:number[][];
 }
@@ -1020,48 +1092,6 @@ abstract class Game
         this.turn_counter = 1;
     }
 
-    public RoundEnd() : void
-    {
-        this.PlayerAttack(Players.bot);
-        this.PlayerAttack(Players.human);
-        this.GetPlayer(Players.bot).RoundEnd();
-        this.GetPlayer(Players.human).RoundEnd();
-        this.ResetTurnCounter();
-        this.StartDeployTurn();
-    }
-
-    public StartDeployTurn() : void
-    {
-        this.deploy_counter = 0;
-        this.deploying = true;
-        if (!this.CheckPlayerCanDeploy(Players.human))
-            this.deploy_counter++;
-        if (!this.CheckPlayerCanDeploy(Players.bot))
-            this.deploy_counter++;
-        if (this.deploy_counter >= 2)
-            this.EndDeployTurn();
-
-    }
-
-    public CheckPlayerCanDeploy(id:Players) : boolean
-    {
-        let player:Player = this.GetPlayer(id);
-        let pieces:GamePiece[] = player.pieces;
-        let i:number = 0,
-            l:number = player.pieces.length;
-        while (i < l) {
-            if (!pieces[i++].active) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public EndDeployTurn() : void
-    {
-        this.deploying = false;
-    }
-
     public PlayerAttack(id:Players) : void
     {
         let player = this.GetPlayer(id);
@@ -1093,10 +1123,8 @@ abstract class Game
                 direction_mult = directions_multipliers[piece.direction];
                 while (j <= k)
                 {
-                    console.log(j);
                     ny = y + (direction_mult.y * j);
                     nx = x + (direction_mult.x * j);
-                    console.log(nx,ny,piece.value,id);
                     if (!Game.CheckPositionBounds(this.board,nx,ny)) break;
                     target = this.board[ny][nx];
                     if (target == Tiles.obstacle) break;
@@ -1136,48 +1164,33 @@ abstract class Game
 
     private GetPlayerColor(id:Players)
     {
-        if (id == Players.human)
-            return Tiles.blue;
-        return Tiles.red;
+        return this.GetPlayer(id).color;
     }
 
-    private PlayerInputDeploy(x:number,y:number,index:number,id:Players) : void
+    public PlayerDeploy(id:Players,x:number,y:number,piece_index:number)
     {
-        if (!this.deploying)
-            return console.log("Deployment phase in progress.");
-        if (!Game.CheckPositionBounds(this.board,x,y)) return;
-        if (this.board[y][x] != this.GetPlayerColor(id)) return; //TODO: Handle invalid deploy input;
-        let player:Player = this.GetPlayer(id);
-        let pieces:GamePiece[] = player.pieces;
-        let i:number = 0,
-            l:number = pieces.length;
-        let piece:GamePiece;
-        while (i < l)
-        {
-            piece = pieces[i++];
-            if (!piece.active)
-            {
-                piece.SetInitialPosition(x,y);
-                piece.SetValue(i + 1);
-                this.board[y][x] = piece.GetBoardValue();
-                break;
-            }
-        }
-        this.deploy_counter++;
-        if (this.deploy_counter >= 0)
-            this.EndDeployTurn();
+        if (this.turn_player != id)
+            return console.log("Not turn player");
+        let player = this.GetPlayer(id);
+        if (this.board[y][x] !== player.color)
+            return DevelopmentError("Invalid deploy position!");
+        let piece = player.pieces[piece_index];
+        if (!piece && piece.active) 
+            return DevelopmentError("Invalid piece index");
+        piece.SetActive(true);
+        this.board[y][x] = piece.GetBoardValue();
     }
 
     public static PlayerMove(direction:Directions,board:number[][],piece_length:number,player:IPlayer | PlayerCopy,other_player:IPlayer | PlayerCopy) : void
     {
         let x = directions_multipliers[direction].x;
         let y = directions_multipliers[direction].y;
-        if (!player)
+        if (!player || !other_player)
             DevelopmentError('Error player is not defined.');
         let color:Tiles = player.color;
         let other_color:Tiles = other_player.color;
         let i:number = 0,
-            l:number = player.pieces_length,
+            l:number = player.pieces.length,
             j:number = 0,
             k:number;
         let start_position:Vector2;
@@ -1203,7 +1216,6 @@ abstract class Game
                         {
                             if (piece.value !== 1 && tile_val > 0)
                             {
-                                console.log(enemy_range_min,enemy_range_max,tile_val,piece.value);
                                 if (tile_val > enemy_range_min && tile_val <= enemy_range_max)
                                 {
                                     if (tile_val - enemy_range_min <= piece.value)
@@ -1220,7 +1232,7 @@ abstract class Game
                             break;
                         }
                         else {
-                            if (tile_val == other_color)
+                            if (tile_val === other_color)
                                 other_player.AddTiles(-1,_x,_y);
                             player.AddTiles(1,_x,_y);
                             board[piece.position.y][piece.position.x] = color;
@@ -1260,7 +1272,6 @@ class BotGame  extends Game implements IGame
             piece.SetDirection(Directions.down);
             piece.SetActive(true);
             piece.SetInitialPosition(Math.floor(this.board[0].length / 2) - 1, this.board.length - yDif);
-            piece.SetValue(1);
             this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
             piece = this.bot.pieces[0];
             _x = Math.floor(this.board[0].length / 2) + (width_is_even ? 0 : 1);
@@ -1268,7 +1279,6 @@ class BotGame  extends Game implements IGame
             piece.SetDirection(Directions.up);
             piece.SetActive(true);
             piece.SetInitialPosition(_x, _y);
-            piece.SetValue(1);
             this.board[piece.position.y][piece.position.x] = piece.GetBoardValue();
             this.bot.AddTiles(0,_x,_y);
         }
@@ -1315,10 +1325,14 @@ class BotGame  extends Game implements IGame
 
     PassTurn() : void
     {
-        if (this.turn_player == Players.bot)
+        if (this.turn_player === Players.bot)
             this.turn_player = Players.human;
-        else
+        else {
             this.turn_player = Players.bot;
+            setTimeout(() => {
+                BOT_MOVE((this.difficulty + 1) * 2,this);
+            }, 3000);
+        }
     }
 
     DrawPieces()
@@ -1342,14 +1356,14 @@ class BotGame  extends Game implements IGame
 
     GetPlayer(id:Players) : IPlayer
     {
-        if (id == Players.bot)
+        if (id === Players.bot)
             return this.bot;
         return this.human;
     }
 
     GetOtherPlayer(id:Players) : IPlayer
     {
-        if (id == Players.bot)
+        if (id === Players.bot)
             return this.human;
         return this.bot;
     }
