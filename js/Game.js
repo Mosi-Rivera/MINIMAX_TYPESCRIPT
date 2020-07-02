@@ -114,6 +114,7 @@ var Vector2 = /** @class */ (function () {
 }());
 //#endregion
 //#region CONSTS
+//CANVAS
 var canvasBackground = document.getElementById('canvas-background');
 var canvasMidground = document.getElementById('canvas-midground');
 var canvasForeground = document.getElementById('canvas-foreground');
@@ -121,6 +122,11 @@ var canvasContainer = document.getElementById('canvas-container');
 var ctxBackground = canvasBackground.getContext('2d');
 var ctxMidground = canvasMidground.getContext('2d');
 var ctxForeground = canvasForeground.getContext('2d');
+//BUTTONS
+var buttonInputUp = document.getElementById('input-up');
+var buttonInputDown = document.getElementById('input-down');
+var buttonInputLeft = document.getElementById('input-left');
+var buttonInputRight = document.getElementById('input-right');
 var obstaclePatternY = [0, 2, 1];
 var directions_multipliers = (_a = {},
     _a[0 /* up */] = new Vector2(0, -1),
@@ -276,12 +282,27 @@ var CanvasManager = /** @class */ (function () {
 //#region  GAME_MANAGER
 var GameManager = /** @class */ (function () {
     function GameManager(game) {
+        var _this = this;
         this.last_tick = 0;
         this.running = false;
         this.raf_index = null;
         this.delta = 0;
         this.game = game;
+        buttonInputUp.onclick = function () { return _this.MoveInput(0 /* up */); };
+        buttonInputDown.onclick = function () { return _this.MoveInput(2 /* down */); };
+        buttonInputLeft.onclick = function () { return _this.MoveInput(3 /* left */); };
+        buttonInputRight.onclick = function () { return _this.MoveInput(1 /* right */); };
     }
+    GameManager.prototype.Destroy = function () {
+        buttonInputUp.onclick = null;
+        buttonInputDown.onclick = null;
+        buttonInputRight.onclick = null;
+        buttonInputLeft.onclick = null;
+        this.game.Destroy();
+    };
+    GameManager.prototype.MoveInput = function (direction) {
+        this.game.PlayerInputMove(direction, 0 /* human */);
+    };
     GameManager.prototype.start = function () {
         if (this.running)
             return false;
@@ -343,7 +364,7 @@ var GamePiece = /** @class */ (function () {
         this.piece_value_offset = piece_value_offset;
         this.value = value;
         this.draw_text = value.toString();
-        this.cooldown = value - 1;
+        this.cooldown = (value - 1) * 2;
         this.base_cooldown = this.cooldown;
     }
     GamePiece.prototype.SetDirection = function (direction) {
@@ -641,18 +662,16 @@ function BOT_MOVE(depth, game) {
     var summon_piece_index = null;
     var summon_piece_score = score;
     var summon_piece_position = null;
-    // while (i < l)
-    // {
-    //     let piece:GamePiece = pieces[i];
-    //     if (piece && !piece.active && piece.cooldown <= 0)
-    //     {
-    //         summon_piece_index = i;
-    //         break;
-    //     }
-    //     i++;
-    // }
+    while (i < l) {
+        var piece = pieces[i];
+        if (piece && !piece.active && piece.cooldown <= 0) {
+            summon_piece_index = i;
+            break;
+        }
+        i++;
+    }
     console.log(summon_piece_index, "summon_piece_index");
-    if ( /*summon_piece_index !== null*/false) {
+    if (summon_piece_index !== null) {
         i = 0;
         l = bot.tiles_arr.length;
         while (i < l) {
@@ -682,7 +701,7 @@ function BOT_MOVE(depth, game) {
     if (summon_piece_index !== null) {
         if (summon_piece_score > score) {
             game.PlayerDeploy(1 /* bot */, summon_piece_position.x, summon_piece_position.y, summon_piece_index);
-            game.PassTurn();
+            game.TurnEnd();
             return;
         }
     }
@@ -830,6 +849,7 @@ var Game = /** @class */ (function () {
         if (!piece && piece.active)
             return DevelopmentError("Invalid piece index");
         piece.SetActive(true);
+        piece.SetPosition(x, y);
         this.board[y][x] = piece.GetBoardValue();
     };
     Game.PlayerMove = function (direction, board, piece_length, player, other_player) {
@@ -958,7 +978,7 @@ var BotGame = /** @class */ (function (_super) {
             this.turn_player = 1 /* bot */;
             setTimeout(function () {
                 BOT_MOVE((_this.difficulty + 1) * 2, _this);
-            }, 1800);
+            }, 1500);
         }
     };
     BotGame.prototype.DrawPieces = function () {
@@ -1020,6 +1040,8 @@ var AppManager = /** @class */ (function () {
         this.game_type = type;
     };
     AppManager.prototype.Start = function () {
+        if (game_manager)
+            game_manager.Destroy();
         game_manager = new GameManager(this.GetGame());
         game_manager.LogGame();
     };

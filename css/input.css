@@ -1,0 +1,45 @@
+#input-container
+{
+    position: absolute;
+    z-index: 5;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    padding: 5%;
+    box-sizing: border-box;
+    align-items: center;
+}
+
+#input-container:hover
+{
+    background-color: rgba(0, 0, 0, 0.185);
+}
+
+#input-container:hover > div
+{
+    display: flex !important;
+}
+
+#input-container > div
+{
+    display: none;
+}
+
+#input-container .column
+{
+    width: 30%;
+    height: 100%;
+}
+
+#input-container .column > .input-button{
+    width: 100%;
+}
+
+.input-button
+{
+    background-color: rgba(129, 129, 255, 0.651);
+    height: 30%;
+    width: 30%;
+    cursor: pointer;
+}

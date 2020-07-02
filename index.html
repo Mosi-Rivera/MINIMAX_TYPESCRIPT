@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
     <link rel="stylesheet" href="./css/canvas.css">
+    <link rel="stylesheet" href="./css/input.css">
+    <link rel="stylesheet" href="./css/flexbox.css">
 </head>
 <body>
     <div>
@@ -21,6 +23,15 @@
         <canvas id='canvas-background'></canvas>
         <canvas id='canvas-midground'></canvas>
         <canvas id='canvas-foreground'></canvas>
+        <div class="flex row justify-between" id='input-container'>
+            <div class="input-button" id='input-left'>LEFT</div>
+            <div class='flex column justify-between'>
+                <div class="input-button" id='input-up'>UP</div>
+                <div></div>
+                <div class="input-button" id='input-down'>DOWN</div>
+            </div>
+            <div class="input-button" id='input-right'>RIGHT</div>
+        </div>
     </div>
     <div id='human-pieces-container'>
 

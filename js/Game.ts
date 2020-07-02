@@ -127,6 +127,7 @@ class Vector2
 //#endregion
 
 //#region CONSTS
+//CANVAS
 const canvasBackground  : HTMLCanvasElement = document.getElementById('canvas-background') as HTMLCanvasElement;
 const canvasMidground   : HTMLCanvasElement = document.getElementById('canvas-midground') as HTMLCanvasElement;
 const canvasForeground  : HTMLCanvasElement = document.getElementById('canvas-foreground') as HTMLCanvasElement;
@@ -134,6 +135,12 @@ const canvasContainer   : HTMLElement = document.getElementById('canvas-containe
 const ctxBackground = canvasBackground.getContext('2d');
 const ctxMidground  = canvasMidground.getContext('2d');
 const ctxForeground = canvasForeground.getContext('2d');
+
+//BUTTONS
+const buttonInputUp     : HTMLElement = document.getElementById('input-up');
+const buttonInputDown   : HTMLElement = document.getElementById('input-down');
+const buttonInputLeft   : HTMLElement = document.getElementById('input-left');
+const buttonInputRight  : HTMLElement = document.getElementById('input-right');
 
 const obstaclePatternY:number[] = [0,2,1];
 
@@ -431,6 +438,24 @@ class GameManager
 
     constructor(game:IGame) {
         this.game = game;
+        buttonInputUp.onclick       = () => this.MoveInput(Directions.up);
+        buttonInputDown.onclick     = () => this.MoveInput(Directions.down);
+        buttonInputLeft.onclick     = () => this.MoveInput(Directions.left);
+        buttonInputRight.onclick    = () => this.MoveInput(Directions.right);
+    }
+
+    public Destroy() : void
+    {
+        buttonInputUp.onclick       = null;
+        buttonInputDown.onclick     = null;
+        buttonInputRight.onclick    = null;
+        buttonInputLeft.onclick     = null;
+        this.game.Destroy();
+    }
+
+    public MoveInput(direction:Directions) : void
+    {
+        this.game.PlayerInputMove(direction,Players.human);
     }
 
     public start() : boolean
@@ -534,7 +559,7 @@ class GamePiece implements IGamePiece, IDrawable
         this.piece_value_offset = piece_value_offset;
         this.value = value;
         this.draw_text = value.toString();
-        this.cooldown = value - 1;
+        this.cooldown = (value - 1) * 2;
         this.base_cooldown = this.cooldown;
     }
 
@@ -932,18 +957,18 @@ function BOT_MOVE (depth:number,game:BotGame)
     let summon_piece_index:number = null;
     let summon_piece_score:number = score;
     let summon_piece_position:Vector2 = null;
-    // while (i < l)
-    // {
-    //     let piece:GamePiece = pieces[i];
-    //     if (piece && !piece.active && piece.cooldown <= 0)
-    //     {
-    //         summon_piece_index = i;
-    //         break;
-    //     }
-    //     i++;
-    // }
+    while (i < l)
+    {
+        let piece:GamePiece = pieces[i];
+        if (piece && !piece.active && piece.cooldown <= 0)
+        {
+            summon_piece_index = i;
+            break;
+        }
+        i++;
+    }
     console.log(summon_piece_index,"summon_piece_index");
-    if (/*summon_piece_index !== null*/false)
+    if (summon_piece_index !== null)
     {
         i = 0;
         l = bot.tiles_arr.length;
@@ -986,7 +1011,7 @@ function BOT_MOVE (depth:number,game:BotGame)
         if (summon_piece_score > score)
         {
             game.PlayerDeploy(Players.bot,summon_piece_position.x,summon_piece_position.y,summon_piece_index);
-            game.PassTurn();
+            game.TurnEnd();
             return;
         }
     }
@@ -1002,6 +1027,8 @@ interface IGame
     PlayerAction(action:number) : void;
     GetPlayer(id:Players) : IPlayer;
     GetOtherPlayer(id:Players) : IPlayer;
+    PlayerInputMove(direction:Directions,id:Players):void
+    Destroy():void;
     turn_player:number;
     piece_length:number;
     board:number[][];
@@ -1177,7 +1204,7 @@ abstract class Game
         }
     }
 
-    private PlayerInputMove(direction:Directions,id:Players) : void {
+    public PlayerInputMove(direction:Directions,id:Players) : void {
         if (this.deploying)
             return console.log("Deployment phase in progress.");
         if (this.turn_player != id)
@@ -1208,6 +1235,7 @@ abstract class Game
         if (!piece && piece.active) 
             return DevelopmentError("Invalid piece index");
         piece.SetActive(true);
+        piece.SetPosition(x,y);
         this.board[y][x] = piece.GetBoardValue();
     }
 
@@ -1365,7 +1393,7 @@ class BotGame  extends Game implements IGame
             this.turn_player = Players.bot;
             setTimeout(() => {
                 BOT_MOVE((this.difficulty + 1) * 2,this);
-            }, 1800);
+            }, 1500);
         }
     }
 
@@ -1456,6 +1484,8 @@ class AppManager
 
     public Start() : void
     {
+        if (game_manager)
+            game_manager.Destroy();
         game_manager = new GameManager(this.GetGame());
         game_manager.LogGame();
     }
