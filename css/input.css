@@ -18,7 +18,15 @@
 
 #input-container:hover > div
 {
-    display: flex !important;
+    display: flex;
+}
+
+.deploying {
+    background-color: transparent !important;
+}
+
+.deploying div {
+    display: none !important;
 }
 
 #input-container > div
@@ -42,4 +50,98 @@
     height: 30%;
     width: 30%;
     cursor: pointer;
+}
+
+/**/
+
+#bot-deploy-container,
+#human-deploy-container
+{
+    width: 40%;
+    display: flex;
+    flex-flow: row nowrap;
+}
+
+#bot-deploy-container > div
+{
+    background-color: red;
+}
+
+#human-deploy-container > div
+{
+    background-color: blue;
+    cursor: pointer;
+}
+
+#bot-deploy-container > div,
+#human-deploy-container > div
+{
+    font-family: sans-serif;
+    padding: 2%;
+    color: white;
+    font-weight: bold;
+    position: relative;
+    box-sizing: border-box;
+}
+
+#human-deploy-container > .selected > span
+{
+    color: yellow !important;
+}
+
+#bot-deploy-container > div:hover::after
+{
+    transform: translate(100%, -100%) rotate(45deg);
+}
+
+#human-deploy-container > div:hover::after
+{
+    transform: translate(100%, 100%) rotate(45deg);
+}
+
+#bot-deploy-container > div::after
+{
+    content: "";
+    position: absolute;
+    top: 0px;
+    right: 0px;
+    width: 11%;
+    padding-top: 11%;
+    background-color: rgb(255, 255, 255);
+    transform: translate(50%, -50%) rotate(45deg);
+    transition: transform 0.5s ease 0s;
+}
+
+#human-deploy-container > div::after
+{
+    content: "";
+    position: absolute;
+    bottom: 0px;
+    right: 0px;
+    width: 11%;
+    padding-bottom: 11%;
+    background-color: rgb(255, 255, 255);
+    transform: translate(50%, 50%) rotate(45deg);
+    transition: transform 0.5s ease 0s;
+}
+
+#bot-deploy-container > div::before,
+#human-deploy-container > div>::before
+{
+    display: inline-block;
+    content: "";
+    padding-top: 30%;
+}
+
+#bot-deploy-container > div > span:nth-child(1),
+#human-deploy-container > div > span:nth-child(1)
+{
+    font-size: 2rem;
+    line-height: 0;
+}
+
+#bot-deploy-container > div > span:nth-child(2),
+#human-deploy-container > div > span:nth-child(2)
+{
+    position: absolute;
 }

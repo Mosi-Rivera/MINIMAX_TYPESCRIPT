@@ -137,10 +137,14 @@ const ctxMidground  = canvasMidground.getContext('2d');
 const ctxForeground = canvasForeground.getContext('2d');
 
 //BUTTONS
+const inputContainer    : HTMLElement = document.getElementById('input-container');
 const buttonInputUp     : HTMLElement = document.getElementById('input-up');
 const buttonInputDown   : HTMLElement = document.getElementById('input-down');
 const buttonInputLeft   : HTMLElement = document.getElementById('input-left');
 const buttonInputRight  : HTMLElement = document.getElementById('input-right');
+
+const humanDeployContainer : HTMLElement = document.getElementById('human-deploy-container');
+const botDeployContainer : HTMLElement = document.getElementById('bot-deploy-container');
 
 const obstaclePatternY:number[] = [0,2,1];
 
@@ -257,6 +261,13 @@ class CanvasManager
             window.removeEventListener('resize',resize);
         this.addResizeListener();
         this.Resize();
+    }
+
+    public CanvasToBoardPosition(x:number,y:number) : Vector2
+    {
+        let _x:number = Math.floor(x / this.tileWidth);
+        let _y:number = Math.floor(y / this.tileHeight);
+        return new Vector2(_x,_y);
     }
 
     public Reset() : void
@@ -542,6 +553,7 @@ class GamePiece implements IGamePiece, IDrawable
     public last_position        : Vector2 = new Vector2();
     public draw_position        : Vector2 = new Vector2();
     public draw_rect            : Vector2 = new Vector2();
+    public element              : HTMLElement;
     public draw_text            : string;
     public draw_color           : string;
     public draw_type            : DrawType = DrawType.game_piece;
@@ -561,6 +573,27 @@ class GamePiece implements IGamePiece, IDrawable
         this.draw_text = value.toString();
         this.cooldown = (value - 1) * 2;
         this.base_cooldown = this.cooldown;
+    }
+
+    TurnEnd() : void
+    {
+        this.cooldown--;
+        if (this.cooldown < 0) 
+            (this.element.children[1] as HTMLElement).innerHTML = '';
+        else
+            this.element.children[1].innerHTML = this.cooldown.toString();
+        if (this.active || this.cooldown > 0) 
+        {
+            this.element.style.backgroundColor = 'black';
+            (this.element.children[0] as HTMLElement).style.color = '#464646';
+            (this.element.children[1] as HTMLElement).style.color = '#464646';
+        }
+        else 
+        {
+            this.element.style.backgroundColor = this.piece_value_offset > 0 ? 'red' : 'blue';
+            (this.element.children[0] as HTMLElement).style.color = 'white';
+            (this.element.children[1] as HTMLElement).style.color = 'white';
+        }
     }
 
     SetDirection(direction:Directions)
@@ -690,7 +723,7 @@ abstract class Player {
         let i = 0,
             l = this.pieces.length;
         while (i < l)
-            this.pieces[i++].cooldown--;
+            this.pieces[i++].TurnEnd();
     }
 
     public RoundEnd() : void
@@ -1011,7 +1044,6 @@ function BOT_MOVE (depth:number,game:BotGame)
         if (summon_piece_score > score)
         {
             game.PlayerDeploy(Players.bot,summon_piece_position.x,summon_piece_position.y,summon_piece_index);
-            game.TurnEnd();
             return;
         }
     }
@@ -1033,9 +1065,11 @@ interface IGame
     piece_length:number;
     board:number[][];
 }
+
 abstract class Game
 {
     public board:number[][];
+    public summon_index:number = null;
     public difficulty:Difficulties;
     public piece_length:number;
     public turn_counter:number = 1;
@@ -1063,11 +1097,30 @@ abstract class Game
                 _y++;
             }
         })(board_size);
+        inputContainer.onclick = (e) => {
+            if (this.summon_index !== null)
+            {
+                let _position:Vector2 = canvas_manager.CanvasToBoardPosition(e.offsetX,e.offsetY);
+                console.log(_position,e.offsetX,e.offsetY);
+                if (Game.CheckPositionBounds(this.board,_position.x,_position.y))
+                {
+                    this.PlayerDeploy(Players.human,_position.x,_position.y,this.summon_index);
+                    let player = this.GetPlayer(Players.human);
+                    let i = 0,
+                        l = this.piece_length;
+                    while (i < l)
+                        player.pieces[i++].element.classList.remove('selected');
+                    inputContainer.classList.remove('deploying'); 
+                }
+            }
+        }
     }
 
     public Destroy() : void
     {
         canvas_manager.Reset();
+        inputContainer.onclick = null;
+        inputContainer.classList.remove('deploying');
     }
 
     public Update(delta:number) : void 
@@ -1232,11 +1285,12 @@ abstract class Game
         if (this.board[y][x] !== player.color)
             return DevelopmentError("Invalid deploy position!");
         let piece = player.pieces[piece_index];
-        if (!piece && piece.active) 
+        if (!piece || piece.active) 
             return DevelopmentError("Invalid piece index");
         piece.SetActive(true);
         piece.SetPosition(x,y);
         this.board[y][x] = piece.GetBoardValue();
+        this.TurnEnd();
     }
 
     public static PlayerMove(direction:Directions,board:number[][],piece_length:number,player:IPlayer | PlayerCopy,other_player:IPlayer | PlayerCopy) : void
@@ -1362,17 +1416,66 @@ class BotGame  extends Game implements IGame
                 i++;
             }
         }
+        {
+            let i = 0,
+                j = 0,
+                l = this.piece_length;
+            let container:HTMLElement = humanDeployContainer;
+            let player:IPlayer = this.human;
+            while (i++ < 2)
+            {
+                j = 0;
+                while (j < l) //human
+                {
+                    let piece = player.pieces[j];
+                    let elem:HTMLElement = document.createElement('div');
+                    elem.appendChild(document.createElement('span'));
+                    elem.appendChild(document.createElement('span'));
+                    elem.children[0].innerHTML = piece.draw_text;
+                    elem.children[1].innerHTML =  piece.cooldown <= 0 ? '' : piece.cooldown.toString();
+                    elem.style.backgroundColor = 'black';
+                    (elem.children[0] as HTMLElement).style.color = '#464646';
+                    (elem.children[1] as HTMLElement).style.color = '#464646';
+                    container.appendChild(elem);
+                    elem.style.width = (100 / this.piece_length) + '%';
+                    piece.element = elem;
+                    if (i == 1)
+                        elem.onclick = () => {
+                            let index:number = piece.value - 1;
+                            if (this.summon_index == index) {
+                                this.summon_index = null;
+                                elem.classList.remove('selected');
+                                inputContainer.classList.remove('deploying');
+                                return;
+                            }
+                            if (!piece.active && piece.cooldown <= 0)
+                            {
+                                this.summon_index = index;
+                                let i = 0,
+                                    l = this.piece_length;
+                                while (i < l)
+                                    this.human.pieces[i++].element.classList.remove('selected');
+                                elem.classList.add('selected');
+                                inputContainer.classList.add('deploying');
+                            }
+                        };
+                    j++;
+                }
+                container = botDeployContainer;
+                player = this.bot;
+            }
+        }
         if (canvas_manager) {
             canvas_manager.SetBoardDimensions(this.board.length);
             canvas_manager.ClearCanvas();
             canvas_manager.DrawBoard();
             this.DrawTiles();
             this.DrawPieces();
-            this.draw_tiles_event_id = canvas_manager.AddEvent(
+            canvas_manager.AddEvent(
                 new InvokableEvent(this,this.DrawTiles,-1),
                 CanvasEvents.resize
             );
-            this.draw_pieces_event_id = canvas_manager.AddEvent(
+            canvas_manager.AddEvent(
                 new InvokableEvent(this,this.DrawPieces,-1),
                 CanvasEvents.resize    
             );

@@ -123,10 +123,13 @@ var ctxBackground = canvasBackground.getContext('2d');
 var ctxMidground = canvasMidground.getContext('2d');
 var ctxForeground = canvasForeground.getContext('2d');
 //BUTTONS
+var inputContainer = document.getElementById('input-container');
 var buttonInputUp = document.getElementById('input-up');
 var buttonInputDown = document.getElementById('input-down');
 var buttonInputLeft = document.getElementById('input-left');
 var buttonInputRight = document.getElementById('input-right');
+var humanDeployContainer = document.getElementById('human-deploy-container');
+var botDeployContainer = document.getElementById('bot-deploy-container');
 var obstaclePatternY = [0, 2, 1];
 var directions_multipliers = (_a = {},
     _a[0 /* up */] = new Vector2(0, -1),
@@ -153,6 +156,11 @@ var CanvasManager = /** @class */ (function () {
         this.addResizeListener();
         this.Resize();
     }
+    CanvasManager.prototype.CanvasToBoardPosition = function (x, y) {
+        var _x = Math.floor(x / this.tileWidth);
+        var _y = Math.floor(y / this.tileHeight);
+        return new Vector2(_x, _y);
+    };
     CanvasManager.prototype.Reset = function () {
         this.drawEvents.length = 0;
         this.resizeEvents.length = 0;
@@ -367,6 +375,23 @@ var GamePiece = /** @class */ (function () {
         this.cooldown = (value - 1) * 2;
         this.base_cooldown = this.cooldown;
     }
+    GamePiece.prototype.TurnEnd = function () {
+        this.cooldown--;
+        if (this.cooldown < 0)
+            this.element.children[1].innerHTML = '';
+        else
+            this.element.children[1].innerHTML = this.cooldown.toString();
+        if (this.active || this.cooldown > 0) {
+            this.element.style.backgroundColor = 'black';
+            this.element.children[0].style.color = '#464646';
+            this.element.children[1].style.color = '#464646';
+        }
+        else {
+            this.element.style.backgroundColor = this.piece_value_offset > 0 ? 'red' : 'blue';
+            this.element.children[0].style.color = 'white';
+            this.element.children[1].style.color = 'white';
+        }
+    };
     GamePiece.prototype.SetDirection = function (direction) {
         this.direction = direction;
     };
@@ -449,7 +474,7 @@ var Player = /** @class */ (function () {
     Player.prototype.TurnEnd = function () {
         var i = 0, l = this.pieces.length;
         while (i < l)
-            this.pieces[i++].cooldown--;
+            this.pieces[i++].TurnEnd();
     };
     Player.prototype.RoundEnd = function () {
         var i = 0, l = this.pieces.length;
@@ -701,7 +726,6 @@ function BOT_MOVE(depth, game) {
     if (summon_piece_index !== null) {
         if (summon_piece_score > score) {
             game.PlayerDeploy(1 /* bot */, summon_piece_position.x, summon_piece_position.y, summon_piece_index);
-            game.TurnEnd();
             return;
         }
     }
@@ -711,6 +735,7 @@ function BOT_MOVE(depth, game) {
 var Game = /** @class */ (function () {
     function Game(difficulty, board_size) {
         var _this = this;
+        this.summon_index = null;
         this.turn_counter = 1;
         this.turn_player = 0 /* human */;
         this.deploying = false;
@@ -732,9 +757,25 @@ var Game = /** @class */ (function () {
                 _y++;
             }
         })(board_size);
+        inputContainer.onclick = function (e) {
+            if (_this.summon_index !== null) {
+                var _position = canvas_manager.CanvasToBoardPosition(e.offsetX, e.offsetY);
+                console.log(_position, e.offsetX, e.offsetY);
+                if (Game.CheckPositionBounds(_this.board, _position.x, _position.y)) {
+                    _this.PlayerDeploy(0 /* human */, _position.x, _position.y, _this.summon_index);
+                    var player = _this.GetPlayer(0 /* human */);
+                    var i = 0, l = _this.piece_length;
+                    while (i < l)
+                        player.pieces[i++].element.classList.remove('selected');
+                    inputContainer.classList.remove('deploying');
+                }
+            }
+        };
     }
     Game.prototype.Destroy = function () {
         canvas_manager.Reset();
+        inputContainer.onclick = null;
+        inputContainer.classList.remove('deploying');
     };
     Game.prototype.Update = function (delta) {
         DevelopmentError('Update Function not implemented in Game inheritor.');
@@ -846,11 +887,12 @@ var Game = /** @class */ (function () {
         if (this.board[y][x] !== player.color)
             return DevelopmentError("Invalid deploy position!");
         var piece = player.pieces[piece_index];
-        if (!piece && piece.active)
+        if (!piece || piece.active)
             return DevelopmentError("Invalid piece index");
         piece.SetActive(true);
         piece.SetPosition(x, y);
         this.board[y][x] = piece.GetBoardValue();
+        this.TurnEnd();
     };
     Game.PlayerMove = function (direction, board, piece_length, player, other_player) {
         var x = directions_multipliers[direction].x;
@@ -954,14 +996,62 @@ var BotGame = /** @class */ (function (_super) {
                 i++;
             }
         }
+        {
+            var i = 0, j = 0, l = _this.piece_length;
+            var container = humanDeployContainer;
+            var player = _this.human;
+            while (i++ < 2) {
+                j = 0;
+                var _loop_1 = function () {
+                    var piece = player.pieces[j];
+                    var elem = document.createElement('div');
+                    elem.appendChild(document.createElement('span'));
+                    elem.appendChild(document.createElement('span'));
+                    elem.children[0].innerHTML = piece.draw_text;
+                    elem.children[1].innerHTML = piece.cooldown <= 0 ? '' : piece.cooldown.toString();
+                    elem.style.backgroundColor = 'black';
+                    elem.children[0].style.color = '#464646';
+                    elem.children[1].style.color = '#464646';
+                    container.appendChild(elem);
+                    elem.style.width = (100 / this_1.piece_length) + '%';
+                    piece.element = elem;
+                    if (i == 1)
+                        elem.onclick = function () {
+                            var index = piece.value - 1;
+                            if (_this.summon_index == index) {
+                                _this.summon_index = null;
+                                elem.classList.remove('selected');
+                                inputContainer.classList.remove('deploying');
+                                return;
+                            }
+                            if (!piece.active && piece.cooldown <= 0) {
+                                _this.summon_index = index;
+                                var i_1 = 0, l_1 = _this.piece_length;
+                                while (i_1 < l_1)
+                                    _this.human.pieces[i_1++].element.classList.remove('selected');
+                                elem.classList.add('selected');
+                                inputContainer.classList.add('deploying');
+                            }
+                        };
+                    j++;
+                };
+                var this_1 = this;
+                while (j < l) //human
+                 {
+                    _loop_1();
+                }
+                container = botDeployContainer;
+                player = _this.bot;
+            }
+        }
         if (canvas_manager) {
             canvas_manager.SetBoardDimensions(_this.board.length);
             canvas_manager.ClearCanvas();
             canvas_manager.DrawBoard();
             _this.DrawTiles();
             _this.DrawPieces();
-            _this.draw_tiles_event_id = canvas_manager.AddEvent(new InvokableEvent(_this, _this.DrawTiles, -1), 0 /* resize */);
-            _this.draw_pieces_event_id = canvas_manager.AddEvent(new InvokableEvent(_this, _this.DrawPieces, -1), 0 /* resize */);
+            canvas_manager.AddEvent(new InvokableEvent(_this, _this.DrawTiles, -1), 0 /* resize */);
+            canvas_manager.AddEvent(new InvokableEvent(_this, _this.DrawPieces, -1), 0 /* resize */);
         }
         else
             DevelopmentError("canvas_manager is not initialized!");

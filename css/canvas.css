@@ -1,4 +1,5 @@
 #canvas-container {
+    box-sizing: border-box;
     background-color: red;
     border: 1rem solid black;
     width: 40%;
