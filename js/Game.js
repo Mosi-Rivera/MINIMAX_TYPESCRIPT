@@ -12,7 +12,7 @@ var __extends = (this && this.__extends) || (function () {
     };
 })();
 var _a;
-var in_development = true;
+var in_development = false;
 var game_manager;
 //#region HELPERS_DEVELOPMENT
 function DevelopmentError(str) {
@@ -130,6 +130,11 @@ var buttonInputLeft = document.getElementById('input-left');
 var buttonInputRight = document.getElementById('input-right');
 var humanDeployContainer = document.getElementById('human-deploy-container');
 var botDeployContainer = document.getElementById('bot-deploy-container');
+//UI
+var colorBarContainer = document.getElementById('color-bar-container');
+var colorBarSliderHuman = document.getElementById('color-bar-slider-human');
+var colorBarSliderBot = document.getElementById('color-bar-slider-bot');
+var gameOverScreen = document.getElementById('game-over-screen');
 var obstaclePatternY = [0, 2, 1];
 var directions_multipliers = (_a = {},
     _a[0 /* up */] = new Vector2(0, -1),
@@ -156,14 +161,6 @@ var CanvasManager = /** @class */ (function () {
         this.addResizeListener();
         this.Resize();
     }
-    CanvasManager.prototype.GameOver = function (winner) {
-        var ctx = ctxForeground;
-        var temp = ctx.font;
-        ctx.fillStyle = 'black';
-        ctx.font = (this.boardWidth * 0.2) + "px sans-serif";
-        ctx.fillText(winner === 0 /* human */ ? 'YOU WIN' : 'YOU LOSE', this.canvasWidth / 2, this.canvasHeight / 2);
-        ctx.font = temp;
-    };
     CanvasManager.prototype.CanvasToBoardPosition = function (x, y) {
         var _x = Math.floor(x / this.tileWidth);
         var _y = Math.floor(y / this.tileHeight);
@@ -361,13 +358,6 @@ var GameManager = /** @class */ (function () {
 var GamePiece = /** @class */ (function () {
     function GamePiece(active, piece_value_offset, value) {
         this.direction = 0 /* up */;
-        this.combat_end_events = [];
-        this.turn_start_events = [];
-        this.turn_end_events = [];
-        this.round_start_events = [];
-        this.round_end_events = [];
-        this.on_enter_events = [];
-        this.on_leave_events = [];
         this.position = new Vector2();
         this.last_position = new Vector2();
         this.draw_position = new Vector2();
@@ -403,30 +393,6 @@ var GamePiece = /** @class */ (function () {
     GamePiece.prototype.SetDirection = function (direction) {
         this.direction = direction;
     };
-    GamePiece.prototype.AddEvent = function (event, type) {
-        console.log('type_add_event: ' + type);
-        return AddEvent(this.GetEventArr(type), event);
-    };
-    GamePiece.prototype.RemoveEvent = function (id, func, type) {
-        return RemoveEvent(this.GetEventArr(type), id, func);
-    };
-    GamePiece.prototype.GetEventArr = function (type) {
-        if (0 /* combat_end */ == type)
-            return this.combat_end_events;
-        else if (1 /* turn_start */ == type)
-            return this.turn_start_events;
-        else if (2 /* turn_end */ == type)
-            return this.turn_end_events;
-        else if (3 /* round_start */ == type)
-            return this.round_start_events;
-        else if (4 /* round_end */ == type)
-            return this.round_end_events;
-        else if (6 /* on_enter */ == type)
-            return this.on_enter_events;
-        else if (5 /* on_leave */ == type)
-            return this.on_leave_events;
-        DevelopmentError("GetEventArr did not catch GamePieceEvent.");
-    };
     GamePiece.prototype.GetBoardValue = function () {
         return this.value + this.piece_value_offset;
     };
@@ -445,9 +411,6 @@ var GamePiece = /** @class */ (function () {
         this.draw_position.y = y;
         this.position.x = x;
         this.position.y = y;
-    };
-    GamePiece.prototype.SetLerpTimer = function (n) {
-        this.lerpTimer = n;
     };
     GamePiece.prototype.SetDrawPosition = function (x, y) {
         this.draw_position.x = x;
@@ -483,14 +446,6 @@ var Player = /** @class */ (function () {
         var i = 0, l = this.pieces.length;
         while (i < l)
             this.pieces[i++].TurnEnd();
-    };
-    Player.prototype.RoundEnd = function () {
-        var i = 0, l = this.pieces.length;
-        while (i < l) {
-            HandleEvents(this.pieces[i].round_end_events);
-            HandleEvents(this.pieces[i].combat_end_events);
-            i++;
-        }
     };
     Player.prototype.AddTiles = function (n, x, y) {
         if (x === void 0) { x = null; }
@@ -664,26 +619,6 @@ function MINIMAX(depth, game, max) {
     }
     return score;
 }
-function COUNT_PIECES(board, pieces_length) {
-    var human_count = 0, bot_count = 0;
-    var x = 0, y = 0, l = board.length;
-    while (y < l) {
-        x = 0;
-        while (x < l) {
-            var tile = board[y][x++];
-            if (tile > 0) {
-                if (tile <= pieces_length) {
-                    human_count++;
-                }
-                else
-                    bot_count++;
-            }
-        }
-        y++;
-    }
-    console.log("Pieces Count: (human = " + human_count + " | bot = " + bot_count + ");");
-    return { human_count: human_count, bot_count: bot_count };
-}
 function BOT_MOVE(depth, game) {
     var bot = game.bot;
     var pieces = bot.pieces;
@@ -752,7 +687,7 @@ var Game = /** @class */ (function () {
             DevelopmentError("Invalid board size");
         {
             var board_size_squared = Math.pow(board_size, 2);
-            this.min_tiles_to_win = (board_size_squared - (board_size_squared / 9)) * 0.8;
+            this.min_tiles_to_win = (board_size_squared - (board_size_squared / 9)) * 0.7;
         }
         this.difficulty = difficulty;
         (function (board_size) {
@@ -831,38 +766,53 @@ var Game = /** @class */ (function () {
     Game.prototype.PassTurn = function () {
         DevelopmentError("PassTurn function not implemented in Game inheritor.");
     };
+    Game.prototype.SetColorBar = function (sum_bot, sum_human) {
+        colorBarSliderHuman.style.height = (sum_human / this.min_tiles_to_win) * 100 + "%";
+        colorBarSliderBot.style.height = (sum_bot / this.min_tiles_to_win) * 100 + "%";
+    };
     Game.prototype.IsGameOver = function () {
-        var player = this.GetPlayer(this.turn_player);
-        var other_player = this.GetOtherPlayer(this.turn_player);
-        var color = player.color;
-        var count = 0;
+        var result = false;
+        var bot = this.GetPlayer(1 /* bot */);
+        var human = this.GetPlayer(0 /* human */);
+        var bot_tiles = 0;
+        var human_tiles = 0;
+        var bot_pieces = 0;
+        var human_pieces = 0;
         var y = 0, i = 0, x = 0, l = this.board.length;
         while (y < l) {
             x = 0;
             while (x < l) {
-                if (this.board[y][x] == color)
-                    count++;
+                var tile = this.board[y][x];
+                if (tile == -2 /* red */)
+                    bot_tiles++;
+                else if (tile == -1 /* blue */)
+                    human_tiles++;
                 x++;
             }
             y++;
         }
-        if (count >= this.min_tiles_to_win)
-            return true;
+        if (this.turn_player == 1 /* bot */ ? (bot_tiles > this.min_tiles_to_win) : (human_tiles > this.min_tiles_to_win))
+            result = true;
         i = 0,
-            l = this.piece_length,
-            count = 0;
+            l = this.piece_length;
         while (i < l) {
-            if (other_player.pieces[i].active)
-                count++;
+            if (bot.pieces[i].active)
+                bot_pieces++;
+            if (human.pieces[i].active)
+                human_pieces++;
             i++;
         }
-        if (count == 0)
-            return true;
-        return false;
+        if (this.turn_player == 1 /* bot */ ? (human_pieces == 0) : (bot_pieces == 0))
+            result = true;
+        this.SetColorBar(bot_pieces + bot_tiles, human_pieces + human_tiles);
+        return result;
     };
     Game.prototype.HandleGameOver = function () {
-        console.log('Game Over');
-        canvas_manager.GameOver(this.turn_player);
+        canvas_manager.ClearCanvas(2 /* foreground */);
+        this.DrawTiles();
+        this.DrawPieces();
+        gameOverScreen.style.display = 'flex';
+        gameOverScreen.children[0].innerHTML = this.turn_player == 1 /* bot */ ? 'YOU LOSE.' : 'YOU WIN!';
         this.turn_player = -1;
     };
     Game.prototype.TurnEnd = function () {
@@ -872,52 +822,16 @@ var Game = /** @class */ (function () {
         }
         this.turn_counter++;
         this.PassTurn();
+        if (this.turn_player == 1 /* bot */)
+            inputContainer.classList.add('hide');
+        else
+            inputContainer.classList.remove('hide');
         canvas_manager.ClearCanvas(2 /* foreground */);
         this.DrawTiles();
         this.DrawPieces();
     };
     Game.prototype.ResetTurnCounter = function () {
         this.turn_counter = 1;
-    };
-    Game.prototype.PlayerAttack = function (id) {
-        var player = this.GetPlayer(id);
-        var other_player = this.GetOtherPlayer(id);
-        var pieces = player.pieces, i = 0, l = pieces.length, j, k;
-        var piece;
-        var x, y, nx, ny;
-        var direction_mult;
-        var target;
-        var target_piece;
-        var enemy_range_min = other_player.piece_value_offset;
-        var enemy_range_max = other_player.piece_value_offset + this.piece_length;
-        while (i < l) {
-            piece = pieces[i];
-            if (piece.active && piece.value != 1) {
-                x = piece.position.x;
-                y = piece.position.y;
-                j = 1;
-                k = piece.value;
-                direction_mult = directions_multipliers[piece.direction];
-                while (j <= k) {
-                    ny = y + (direction_mult.y * j);
-                    nx = x + (direction_mult.x * j);
-                    if (!Game.CheckPositionBounds(this.board, nx, ny))
-                        break;
-                    target = this.board[ny][nx];
-                    if (target == -3 /* obstacle */)
-                        break;
-                    if (target > enemy_range_min && target <= enemy_range_max) {
-                        target_piece = other_player.pieces[(target - enemy_range_min) - 1];
-                        if (piece.value >= target_piece.value)
-                            target_piece.AddEvent(new InvokableEvent(target_piece, function () {
-                                this.SetActive(false);
-                            }), 0 /* combat_end */);
-                    }
-                    j++;
-                }
-            }
-            i++;
-        }
     };
     Game.prototype.PlayerInputMove = function (direction, id) {
         if (this.deploying)
@@ -926,9 +840,6 @@ var Game = /** @class */ (function () {
             return console.log('Not turn player!');
         Game.PlayerMove(direction, this.board, this.piece_length, this.GetPlayer(id), this.GetOtherPlayer(id));
         this.TurnEnd();
-    };
-    Game.prototype.GetPlayerColor = function (id) {
-        return this.GetPlayer(id).color;
     };
     Game.prototype.PlayerDeploy = function (id, x, y, piece_index) {
         if (this.turn_player != id)
@@ -1145,11 +1056,7 @@ var BotGame = /** @class */ (function (_super) {
             return this.human;
         return this.bot;
     };
-    BotGame.prototype.Update = function (delta) {
-    };
-    BotGame.prototype.PlayerAction = function (action) {
-        console.log("Player action: " + action);
-    };
+    BotGame.prototype.Update = function (delta) { };
     return BotGame;
 }(Game));
 //#endregion
@@ -1160,12 +1067,36 @@ var AppManager = /** @class */ (function () {
         var _this = this;
         this.game_type = 0 /* bot */;
         this.difficulty = 1 /* easy */;
+        this.gameOverScreen = gameOverScreen;
+        gameOverScreen.onclick = function () {
+            _this.screenMenu.style.display = 'flex';
+            gameOverScreen.style.display = 'none';
+        };
+        this.screenMenu = document.getElementById('main-menu');
+        this.screenGame = document.getElementById('game-container');
         this.buttonEasy = document.getElementById('button-easy');
         this.buttonHard = document.getElementById('button-hard');
         this.buttonInsane = document.getElementById('button-insane');
-        this.buttonEasy.onclick = function () { return _this.SetDifficulty(1 /* easy */); };
-        this.buttonHard.onclick = function () { return _this.SetDifficulty(2 /* hard */); };
-        this.buttonInsane.onclick = function () { return _this.SetDifficulty(3 /* insane */); };
+        this.buttonGameStart = document.getElementById('button-start');
+        this.buttonEasy.onclick = function () {
+            _this.SetDifficulty(1 /* easy */);
+            _this.buttonEasy.classList.add('difficulty-selected');
+            _this.buttonHard.classList.remove('difficulty-selected');
+            _this.buttonInsane.classList.remove('difficulty-selected');
+        };
+        this.buttonHard.onclick = function () {
+            _this.SetDifficulty(2 /* hard */);
+            _this.buttonEasy.classList.remove('difficulty-selected');
+            _this.buttonHard.classList.add('difficulty-selected');
+            _this.buttonInsane.classList.remove('difficulty-selected');
+        };
+        this.buttonInsane.onclick = function () {
+            _this.SetDifficulty(3 /* insane */);
+            _this.buttonEasy.classList.remove('difficulty-selected');
+            _this.buttonHard.classList.remove('difficulty-selected');
+            _this.buttonInsane.classList.add('difficulty-selected');
+        };
+        this.buttonGameStart.onclick = function () { return _this.Start(); };
     }
     AppManager.prototype.GetGame = function () {
         if (this.game_type == 0 /* bot */)
@@ -1182,6 +1113,7 @@ var AppManager = /** @class */ (function () {
     AppManager.prototype.Start = function () {
         if (game_manager)
             game_manager.Destroy();
+        this.screenMenu.style.display = 'none';
         game_manager = new GameManager(this.GetGame());
         game_manager.LogGame();
     };

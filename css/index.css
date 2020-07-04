@@ -1,0 +1,170 @@
+body,
+html
+{
+    padding: 0px;
+    margin: 0px;
+    width: 100%;
+    height: 100%;
+}
+
+.hide
+{
+    display: none !important;
+}
+
+#TITLE
+{
+    font-size: 4rem;
+    font-family: sans-serif;
+    font-weight: bold;
+}
+
+.screen
+{
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-flow: column;
+}
+
+#main-menu
+{
+    z-index: 10;
+    background-color: white;
+}
+
+#menu-container
+{
+    width: 50%;
+    display: flex;
+    flex-flow: column nowrap;
+    align-items: center;
+    justify-content: center;
+}
+
+#difficulty-container
+{
+    width: 100%;
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: space-between;
+}
+
+#difficulty-container > div
+{
+    text-align: center;
+    width: 30%;
+    background-color: rgb(26, 26, 26);
+    font-size: 1.5rem;
+    color: white;
+    font-weight: bold;
+    font-family: sans-serif;
+    border: 1rem solid black;
+    box-sizing: border-box;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#difficulty-container > div:hover,
+#button-start:hover
+{
+    background-color: black;
+    border: 1rem solid rgb(26, 26, 26);
+}
+
+#button-start:hover
+{
+    color: yellow;
+}
+
+#difficulty-container >  div::after
+{
+    content: "";
+    display: inline-block;
+    padding-top: 50%;
+}
+
+.difficulty-selected
+{
+    color: green !important;
+    border-color: green !important;
+    background-color: black !important;
+}
+
+#button-start
+{
+    width: 30%;
+    box-sizing: border-box;
+    border: 1rem solid black;
+    padding: 2%;
+    margin-top: 2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+    font-weight: bold;
+    font-family: sans-serif;
+    background-color: rgb(26, 26, 26);
+}
+
+#color-bar-container
+{
+    position: absolute;
+    width: 5%;
+    left: 103.5%;
+    top: -1rem;
+    border: 1rem solid black;
+    border-left: none;
+    bottom: -1rem;
+}
+
+#color-bar-container > div
+{
+    height: 50%;
+    box-sizing: border-box;
+    background-color: rgb(26, 26, 26);
+}
+
+#color-bar-container > div:nth-child(1)
+{
+    border-bottom: 0.5rem solid black;
+    overflow: hidden;
+}
+
+#color-bar-container > div:nth-child(2)
+{
+    border-top: 0.5rem solid black;
+    overflow: hidden;
+}
+
+#color-bar-slider-human
+{
+    transition: height 0.1s ease-out;
+    background-color: blue;
+}
+
+#color-bar-slider-bot
+{
+    transition: height 0.1s ease-out;
+    background-color: red;
+}
+
+#game-over-screen
+{
+    background-color: rgba(0, 0, 0, 0.781);
+    z-index: 11;
+    color: white;
+    font-weight: bold;
+    font-family: sans-serif;
+    cursor: pointer;
+    display: none;
+}

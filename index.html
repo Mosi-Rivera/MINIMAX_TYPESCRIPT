@@ -4,34 +4,56 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
+    <link rel="stylesheet" href="./css/index.css">
     <link rel="stylesheet" href="./css/canvas.css">
     <link rel="stylesheet" href="./css/input.css">
     <link rel="stylesheet" href="./css/flexbox.css">
 </head>
 <body>
-    <div>
-        <div>
-            <div id='button-easy'>easy</div>
-            <div id='button-hard'>hard</div>
-            <div id='button-insane'>insane</div>
-        </div>
-    </div>
-    <div id='bot-deploy-container'></div>
-    <div id="canvas-container">
-        <canvas id='canvas-background'></canvas>
-        <canvas id='canvas-midground'></canvas>
-        <canvas id='canvas-foreground'></canvas>
-        <div class="flex row justify-between" id='input-container'>
-            <div class="input-button" id='input-left'>LEFT</div>
-            <div class='flex column justify-between'>
-                <div class="input-button" id='input-up'>UP</div>
-                <div></div>
-                <div class="input-button" id='input-down'>DOWN</div>
+    <div class='screen' id='main-menu'>
+        <h1 id='TITLE'>MINIMAX TYPESCRIPT</h1>
+        <div id='menu-container'>
+            <div id='difficulty-container'>
+                <div class='difficulty-selected' id='button-easy'>EASY</div>
+                <div id='button-hard'>HARD</div>
+                <div id='button-insane'>INSANE</div>
             </div>
-            <div class="input-button" id='input-right'>RIGHT</div>
+            <div id='button-start'>START</div>
         </div>
     </div>
-    <div id='human-deploy-container'></div>
+
+    <div class='screen' id='game-container'>
+        <div id='bot-deploy-container'></div>
+        <div id="canvas-container">
+            <canvas id='canvas-background'></canvas>
+            <canvas id='canvas-midground'></canvas>
+            <canvas id='canvas-foreground'></canvas>
+            <div id='color-bar-container'>
+                <div>
+                    <div class='color-bar-slider' id='color-bar-slider-bot'></div>
+                </div>
+                <div>
+                    <div class='color-bar-slider' id='color-bar-slider-human'></div>
+                </div>
+            </div>
+            <div class="flex row justify-between" id='input-container'>
+                <div class="input-button" id='input-left'>LEFT</div>
+                <div class='flex column justify-between'>
+                    <div class="input-button" id='input-up'>UP</div>
+                    <div></div>
+                    <div class="input-button" id='input-down'>DOWN</div>
+                </div>
+                <div class="input-button" id='input-right'>RIGHT</div>
+            </div>
+        </div>
+        <div id='human-deploy-container'></div>
+    </div>
+
+    <div class='screen' id='game-over-screen'>
+        <h1></h1>
+        <span>CLICK ANYWHERE TO RESTART</span>
+    </div>
+
     <script src="./js/Game.js"></script>
     <script src="./tests/test.js"></script>
 </body>

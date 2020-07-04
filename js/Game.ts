@@ -1,4 +1,4 @@
-const in_development = true;
+const in_development = false;
 let game_manager:GameManager;
 
 //#region HELPERS_DEVELOPMENT
@@ -128,23 +128,29 @@ class Vector2
 
 //#region CONSTS
 //CANVAS
-const canvasBackground  : HTMLCanvasElement = document.getElementById('canvas-background') as HTMLCanvasElement;
-const canvasMidground   : HTMLCanvasElement = document.getElementById('canvas-midground') as HTMLCanvasElement;
-const canvasForeground  : HTMLCanvasElement = document.getElementById('canvas-foreground') as HTMLCanvasElement;
-const canvasContainer   : HTMLElement = document.getElementById('canvas-container');
-const ctxBackground = canvasBackground.getContext('2d');
-const ctxMidground  = canvasMidground.getContext('2d');
-const ctxForeground = canvasForeground.getContext('2d');
+const canvasBackground      : HTMLCanvasElement = document.getElementById('canvas-background') as HTMLCanvasElement;
+const canvasMidground       : HTMLCanvasElement = document.getElementById('canvas-midground') as HTMLCanvasElement;
+const canvasForeground      : HTMLCanvasElement = document.getElementById('canvas-foreground') as HTMLCanvasElement;
+const canvasContainer       : HTMLElement = document.getElementById('canvas-container');
+const ctxBackground         : CanvasRenderingContext2D = canvasBackground.getContext('2d');
+const ctxMidground          : CanvasRenderingContext2D = canvasMidground.getContext('2d');
+const ctxForeground         : CanvasRenderingContext2D = canvasForeground.getContext('2d');
 
 //BUTTONS
-const inputContainer    : HTMLElement = document.getElementById('input-container');
-const buttonInputUp     : HTMLElement = document.getElementById('input-up');
-const buttonInputDown   : HTMLElement = document.getElementById('input-down');
-const buttonInputLeft   : HTMLElement = document.getElementById('input-left');
-const buttonInputRight  : HTMLElement = document.getElementById('input-right');
+const inputContainer        : HTMLElement = document.getElementById('input-container');
+const buttonInputUp         : HTMLElement = document.getElementById('input-up');
+const buttonInputDown       : HTMLElement = document.getElementById('input-down');
+const buttonInputLeft       : HTMLElement = document.getElementById('input-left');
+const buttonInputRight      : HTMLElement = document.getElementById('input-right');
 
-const humanDeployContainer : HTMLElement = document.getElementById('human-deploy-container');
-const botDeployContainer : HTMLElement = document.getElementById('bot-deploy-container');
+const humanDeployContainer  : HTMLElement = document.getElementById('human-deploy-container');
+const botDeployContainer    : HTMLElement = document.getElementById('bot-deploy-container');
+
+//UI
+const colorBarContainer     : HTMLElement = document.getElementById('color-bar-container');
+const colorBarSliderHuman   : HTMLElement = document.getElementById('color-bar-slider-human');
+const colorBarSliderBot     : HTMLElement = document.getElementById('color-bar-slider-bot');
+const gameOverScreen        : HTMLElement = document.getElementById('game-over-screen');
 
 const obstaclePatternY:number[] = [0,2,1];
 
@@ -261,16 +267,6 @@ class CanvasManager
             window.removeEventListener('resize',resize);
         this.addResizeListener();
         this.Resize();
-    }
-
-    public GameOver(winner:Players) : void
-    {
-        let ctx:CanvasRenderingContext2D = ctxForeground;
-        let temp:string = ctx.font;
-        ctx.fillStyle = 'black';
-        ctx.font = `${(this.boardWidth * 0.2)}px sans-serif`;
-        ctx.fillText(winner === Players.human ? 'YOU WIN' : 'YOU LOSE',this.canvasWidth/2,this.canvasHeight/2);
-        ctx.font = temp;
     }
 
     public CanvasToBoardPosition(x:number,y:number) : Vector2
@@ -534,13 +530,6 @@ class GameManager
 interface IGamePiece
 {
     direction:Directions;
-    combat_end_events:InvokableEvent[];
-    turn_start_events:InvokableEvent[];
-    turn_end_events:InvokableEvent[];
-    round_start_events:InvokableEvent[];
-    round_end_events:InvokableEvent[];
-    on_enter_events:InvokableEvent[];
-    on_leave_events:InvokableEvent[];
     cooldown:number;
     SetPosition(x:number,y:number) : void;
     SetActive(b:boolean) : void;
@@ -552,13 +541,6 @@ interface IGamePiece
 class GamePiece implements IGamePiece, IDrawable
 {
     public direction            : Directions = Directions.up;
-    public combat_end_events    : InvokableEvent[] = [];
-    public turn_start_events    : InvokableEvent[] = [];
-    public turn_end_events      : InvokableEvent[] = [];
-    public round_start_events   : InvokableEvent[] = [];
-    public round_end_events     : InvokableEvent[] = [];
-    public on_enter_events      : InvokableEvent[] = [];
-    public on_leave_events      : InvokableEvent[] = [];
     public position             : Vector2 = new Vector2();
     public last_position        : Vector2 = new Vector2();
     public draw_position        : Vector2 = new Vector2();
@@ -611,36 +593,6 @@ class GamePiece implements IGamePiece, IDrawable
         this.direction = direction;
     }
 
-    AddEvent(event:InvokableEvent,type:GamePieceEvent) : number
-    {
-        console.log('type_add_event: ' + type);
-        return AddEvent(this.GetEventArr(type),event);
-    }
-
-    RemoveEvent(id:number,func:() => void|boolean,type:GamePieceEvent) : boolean
-    {
-        return RemoveEvent(this.GetEventArr(type),id,func);
-    }
-
-    GetEventArr(type:GamePieceEvent) : InvokableEvent[]
-    {
-        if (GamePieceEvent.combat_end == type)
-            return this.combat_end_events;
-        else if (GamePieceEvent.turn_start == type)
-            return this.turn_start_events;
-        else if (GamePieceEvent.turn_end == type)
-            return this.turn_end_events;
-        else if (GamePieceEvent.round_start == type)
-            return this.round_start_events;
-        else if (GamePieceEvent.round_end == type)
-            return this.round_end_events;
-        else if (GamePieceEvent.on_enter == type)
-            return this.on_enter_events;
-        else if (GamePieceEvent.on_leave == type)
-            return this.on_leave_events;
-        DevelopmentError("GetEventArr did not catch GamePieceEvent.");
-    }
-
     GetBoardValue() : number
     {
         return this.value + this.piece_value_offset;
@@ -664,11 +616,6 @@ class GamePiece implements IGamePiece, IDrawable
         this.draw_position.y = y;
         this.position.x = x;
         this.position.y = y;
-    }
-
-    SetLerpTimer(n:number)
-    {
-        this.lerpTimer = n;
     }
 
     SetDrawPosition(x:number,y:number)
@@ -702,7 +649,6 @@ interface IPlayer
     pieces_length:number;
     pieces:GamePiece[];
     piece_value_offset:number;
-    RoundEnd():void;
     TurnEnd():void;
     color:Tiles;
 }
@@ -734,18 +680,6 @@ abstract class Player {
             l = this.pieces.length;
         while (i < l)
             this.pieces[i++].TurnEnd();
-    }
-
-    public RoundEnd() : void
-    {
-        let i:number = 0,
-            l:number = this.pieces.length;
-        while (i < l)
-        {
-            HandleEvents(this.pieces[i].round_end_events);
-            HandleEvents(this.pieces[i].combat_end_events);
-            i++;
-        }
     }
 
     public AddTiles(n:number,x:number = null,y:number = null) : void
@@ -960,33 +894,6 @@ function MINIMAX(depth:number,game:BotGameCopy,max:boolean = false) : number
     }
     return score;
 }
-function COUNT_PIECES(board:number[][],pieces_length)
-{
-    let human_count:number = 0,
-        bot_count:number = 0;
-    let x:number = 0,
-        y:number = 0,
-        l:number = board.length;
-    while (y < l)
-    {
-        x = 0;
-        while (x < l)
-        {
-            let tile:Tiles = board[y][x++];
-            if (tile > 0)
-            {
-                if (tile <= pieces_length)
-                {
-                    human_count++;
-                } else
-                    bot_count++;
-            }
-        }
-        y++;
-    }
-    console.log(`Pieces Count: (human = ${human_count} | bot = ${bot_count});`)
-    return {human_count,bot_count};
-}
 function BOT_MOVE (depth:number,game:BotGame)
 {
     let bot:BotPlayer = game.bot;
@@ -1066,7 +973,6 @@ function BOT_MOVE (depth:number,game:BotGame)
 interface IGame
 {
     Update(delta:number) : void;
-    PlayerAction(action:number) : void;
     GetPlayer(id:Players) : IPlayer;
     GetOtherPlayer(id:Players) : IPlayer;
     PlayerInputMove(direction:Directions,id:Players):void
@@ -1094,7 +1000,7 @@ abstract class Game
             DevelopmentError("Invalid board size");
         {
             let board_size_squared = Math.pow(board_size,2)
-            this.min_tiles_to_win =  (board_size_squared - (board_size_squared / 9)) * 0.8;
+            this.min_tiles_to_win =  (board_size_squared - (board_size_squared / 9)) * 0.7;
         }
         this.difficulty = difficulty;
         ((board_size:number) : void =>
@@ -1203,12 +1109,21 @@ abstract class Game
         DevelopmentError("PassTurn function not implemented in Game inheritor.");
     }
 
+    public SetColorBar(sum_bot:number,sum_human:number) : void
+    {
+        colorBarSliderHuman.style.height    = `${(sum_human/this.min_tiles_to_win) * 100}%`
+        colorBarSliderBot.style.height      = `${(sum_bot/this.min_tiles_to_win) * 100}%`;
+    }
+
     public IsGameOver() : boolean
     {
-        let player:IPlayer = this.GetPlayer(this.turn_player);
-        let other_player:IPlayer = this.GetOtherPlayer(this.turn_player);
-        let color:Tiles = player.color;
-        let count:number = 0;
+        let result:boolean = false;
+        let bot:IPlayer = this.GetPlayer(Players.bot);
+        let human:IPlayer = this.GetPlayer(Players.human);
+        let bot_tiles:number = 0;
+        let human_tiles:number = 0;
+        let bot_pieces:number = 0;
+        let human_pieces:number = 0;
         let y = 0,
             i = 0,
             x = 0,
@@ -1218,32 +1133,40 @@ abstract class Game
             x = 0;
             while (x < l)
             {
-                if (this.board[y][x] == color)
-                    count++;
+                let tile = this.board[y][x];
+                if (tile == Tiles.red)
+                    bot_tiles++;
+                else if (tile == Tiles.blue)
+                    human_tiles++;
                 x++;
             }
             y++;
         }
-        if (count >= this.min_tiles_to_win)
-            return true;
+        if (this.turn_player == Players.bot ? (bot_tiles > this.min_tiles_to_win) : (human_tiles > this.min_tiles_to_win))
+            result =  true;
         i = 0,
-        l = this.piece_length,
-        count = 0;
+        l = this.piece_length;
         while (i < l)
         {
-            if (other_player.pieces[i].active)
-                count++;
+            if (bot.pieces[i].active)
+                bot_pieces++;
+            if (human.pieces[i].active)
+                human_pieces++;
             i++;
         }
-        if (count == 0)
-            return true;
-        return false;
+        if (this.turn_player == Players.bot ? (human_pieces == 0) : (bot_pieces == 0))
+            result =  true;
+        this.SetColorBar(bot_pieces + bot_tiles,human_pieces + human_tiles);
+        return result;
     }
 
     public HandleGameOver() : void
     {
-        console.log('Game Over')
-        canvas_manager.GameOver(this.turn_player);
+        canvas_manager.ClearCanvas(CanvasLayers.foreground);
+        this.DrawTiles();
+        this.DrawPieces();
+        gameOverScreen.style.display = 'flex';
+        gameOverScreen.children[0].innerHTML = this.turn_player == Players.bot ? 'YOU LOSE.' : 'YOU WIN!';
         this.turn_player = -1;
     }
 
@@ -1255,6 +1178,10 @@ abstract class Game
         }
         this.turn_counter++;
         this.PassTurn();
+        if (this.turn_player == Players.bot)
+            inputContainer.classList.add('hide');
+        else
+            inputContainer.classList.remove('hide');
         canvas_manager.ClearCanvas(CanvasLayers.foreground);
         this.DrawTiles();
         this.DrawPieces();
@@ -1263,61 +1190,6 @@ abstract class Game
     public ResetTurnCounter() : void
     {
         this.turn_counter = 1;
-    }
-
-    public PlayerAttack(id:Players) : void
-    {
-        let player = this.GetPlayer(id);
-        let other_player = this.GetOtherPlayer(id);
-        let pieces:GamePiece[] = player.pieces,
-            i:number = 0,
-            l = pieces.length,
-            j:number,
-            k:number;
-        let piece:GamePiece;
-        let x:number,
-            y:number,
-            nx:number,
-            ny:number;
-        let direction_mult:Vector2;
-        let target:number;
-        let target_piece:GamePiece;
-        let enemy_range_min = other_player.piece_value_offset;
-        let enemy_range_max = other_player.piece_value_offset + this.piece_length;
-        while (i < l)
-        {
-            piece = pieces[i];
-            if (piece.active && piece.value != 1)
-            {
-                x = piece.position.x;
-                y = piece.position.y;
-                j = 1;
-                k = piece.value;
-                direction_mult = directions_multipliers[piece.direction];
-                while (j <= k)
-                {
-                    ny = y + (direction_mult.y * j);
-                    nx = x + (direction_mult.x * j);
-                    if (!Game.CheckPositionBounds(this.board,nx,ny)) break;
-                    target = this.board[ny][nx];
-                    if (target == Tiles.obstacle) break;
-                    if (target > enemy_range_min && target <= enemy_range_max)
-                    {
-                        target_piece = other_player.pieces[(target - enemy_range_min) - 1];
-                        if (piece.value >= target_piece.value)
-                            target_piece.AddEvent(new InvokableEvent(
-                                target_piece,
-                                function()
-                                {
-                                    this.SetActive(false);
-                                }
-                            ),GamePieceEvent.combat_end);
-                    }
-                    j++;
-                }
-            }
-            i++;
-        }
     }
 
     public PlayerInputMove(direction:Directions,id:Players) : void {
@@ -1333,11 +1205,6 @@ abstract class Game
             this.GetOtherPlayer(id)
         );
         this.TurnEnd();
-    }
-
-    private GetPlayerColor(id:Players)
-    {
-        return this.GetPlayer(id).color;
     }
 
     public PlayerDeploy(id:Players,x:number,y:number,piece_index:number)
@@ -1431,7 +1298,7 @@ class BotGame  extends Game implements IGame
     private draw_pieces_event_id:number;
     constructor(difficulty:Difficulties)
     {
-        super(difficulty,9);
+        super(difficulty,9); //This is a mess but I dont want to clean it up :(
         this.piece_length = 5;
         if (!this.piece_length || this.piece_length <= 0)
             DevelopmentError("Piece length is not valid");
@@ -1596,15 +1463,8 @@ class BotGame  extends Game implements IGame
         return this.bot;
     }
 
-    Update(delta:number) : void
-    {
-
-    }
-
-    PlayerAction(action:number) : void
-    {
-        console.log(`Player action: ${action}`);
-    }
+    Update(delta:number) : void //I was going to animate the board but I have cooler shit to do.
+    {}
 }
 
 //#endregion
@@ -1620,15 +1480,46 @@ class AppManager
     private buttonEasy:HTMLElement;
     private buttonHard:HTMLElement;
     private buttonInsane:HTMLElement;
+    private buttonGameStart:HTMLElement;
+    private screenMenu:HTMLElement;
+    private screenGame:HTMLElement;
+    private gameOverScreen:HTMLElement;
 
     constructor()
     {
+        this.gameOverScreen = gameOverScreen;
+        gameOverScreen.onclick = () => {
+            this.screenMenu.style.display = 'flex';
+            gameOverScreen.style.display = 'none';
+        }
+        this.screenMenu     = document.getElementById('main-menu');
+        this.screenGame     = document.getElementById('game-container');
         this.buttonEasy     = document.getElementById('button-easy');
         this.buttonHard     = document.getElementById('button-hard');
         this.buttonInsane   = document.getElementById('button-insane');
-        this.buttonEasy.onclick     = () => this.SetDifficulty(Difficulties.easy);
-        this.buttonHard.onclick     = () => this.SetDifficulty(Difficulties.hard);
-        this.buttonInsane.onclick   = () => this.SetDifficulty(Difficulties.insane);
+        this.buttonGameStart = document.getElementById('button-start');
+        this.buttonEasy.onclick = () =>
+        {
+            this.SetDifficulty(Difficulties.easy);
+            this.buttonEasy.classList.add('difficulty-selected');
+            this.buttonHard.classList.remove('difficulty-selected');
+            this.buttonInsane.classList.remove('difficulty-selected');
+        }
+        this.buttonHard.onclick = () =>
+        {
+            this.SetDifficulty(Difficulties.hard);
+            this.buttonEasy.classList.remove('difficulty-selected');
+            this.buttonHard.classList.add('difficulty-selected');
+            this.buttonInsane.classList.remove('difficulty-selected');
+        }
+        this.buttonInsane.onclick = () =>
+        {
+            this.SetDifficulty(Difficulties.insane);
+            this.buttonEasy.classList.remove('difficulty-selected');
+            this.buttonHard.classList.remove('difficulty-selected');
+            this.buttonInsane.classList.add('difficulty-selected');
+        }
+        this.buttonGameStart.onclick = () => this.Start();
     }
 
     GetGame() : IGame
@@ -1652,6 +1543,7 @@ class AppManager
     {
         if (game_manager)
             game_manager.Destroy();
+        this.screenMenu.style.display = 'none';
         game_manager = new GameManager(this.GetGame());
         game_manager.LogGame();
     }
