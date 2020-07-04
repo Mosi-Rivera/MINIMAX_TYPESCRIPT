@@ -1,4 +1,0 @@
-DIFFICULTIES:
-    easy: depth 1;
-    hard: depth 4;
-    insane: depth 10;
