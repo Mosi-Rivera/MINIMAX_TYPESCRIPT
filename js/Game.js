@@ -156,6 +156,14 @@ var CanvasManager = /** @class */ (function () {
         this.addResizeListener();
         this.Resize();
     }
+    CanvasManager.prototype.GameOver = function (winner) {
+        var ctx = ctxForeground;
+        var temp = ctx.font;
+        ctx.fillStyle = 'black';
+        ctx.font = (this.boardWidth * 0.2) + "px sans-serif";
+        ctx.fillText(winner === 0 /* human */ ? 'YOU WIN' : 'YOU LOSE', this.canvasWidth / 2, this.canvasHeight / 2);
+        ctx.font = temp;
+    };
     CanvasManager.prototype.CanvasToBoardPosition = function (x, y) {
         var _x = Math.floor(x / this.tileWidth);
         var _y = Math.floor(y / this.tileHeight);
@@ -372,7 +380,7 @@ var GamePiece = /** @class */ (function () {
         this.piece_value_offset = piece_value_offset;
         this.value = value;
         this.draw_text = value.toString();
-        this.cooldown = (value - 1) * 2;
+        this.cooldown = value * 2;
         this.base_cooldown = this.cooldown;
     }
     GamePiece.prototype.TurnEnd = function () {
@@ -742,6 +750,10 @@ var Game = /** @class */ (function () {
         this.deploy_counter = 0;
         if (board_size < 6 || board_size % 3 != 0)
             DevelopmentError("Invalid board size");
+        {
+            var board_size_squared = Math.pow(board_size, 2);
+            this.min_tiles_to_win = (board_size_squared - (board_size_squared / 9)) * 0.8;
+        }
         this.difficulty = difficulty;
         (function (board_size) {
             var _x = 0;
@@ -819,7 +831,45 @@ var Game = /** @class */ (function () {
     Game.prototype.PassTurn = function () {
         DevelopmentError("PassTurn function not implemented in Game inheritor.");
     };
+    Game.prototype.IsGameOver = function () {
+        var player = this.GetPlayer(this.turn_player);
+        var other_player = this.GetOtherPlayer(this.turn_player);
+        var color = player.color;
+        var count = 0;
+        var y = 0, i = 0, x = 0, l = this.board.length;
+        while (y < l) {
+            x = 0;
+            while (x < l) {
+                if (this.board[y][x] == color)
+                    count++;
+                x++;
+            }
+            y++;
+        }
+        if (count >= this.min_tiles_to_win)
+            return true;
+        i = 0,
+            l = this.piece_length,
+            count = 0;
+        while (i < l) {
+            if (other_player.pieces[i].active)
+                count++;
+            i++;
+        }
+        if (count == 0)
+            return true;
+        return false;
+    };
+    Game.prototype.HandleGameOver = function () {
+        console.log('Game Over');
+        canvas_manager.GameOver(this.turn_player);
+        this.turn_player = -1;
+    };
     Game.prototype.TurnEnd = function () {
+        if (this.IsGameOver()) {
+            this.HandleGameOver();
+            return;
+        }
         this.turn_counter++;
         this.PassTurn();
         canvas_manager.ClearCanvas(2 /* foreground */);

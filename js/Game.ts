@@ -263,6 +263,16 @@ class CanvasManager
         this.Resize();
     }
 
+    public GameOver(winner:Players) : void
+    {
+        let ctx:CanvasRenderingContext2D = ctxForeground;
+        let temp:string = ctx.font;
+        ctx.fillStyle = 'black';
+        ctx.font = `${(this.boardWidth * 0.2)}px sans-serif`;
+        ctx.fillText(winner === Players.human ? 'YOU WIN' : 'YOU LOSE',this.canvasWidth/2,this.canvasHeight/2);
+        ctx.font = temp;
+    }
+
     public CanvasToBoardPosition(x:number,y:number) : Vector2
     {
         let _x:number = Math.floor(x / this.tileWidth);
@@ -571,7 +581,7 @@ class GamePiece implements IGamePiece, IDrawable
         this.piece_value_offset = piece_value_offset;
         this.value = value;
         this.draw_text = value.toString();
-        this.cooldown = (value - 1) * 2;
+        this.cooldown = value * 2;
         this.base_cooldown = this.cooldown;
     }
 
@@ -1076,11 +1086,16 @@ abstract class Game
     public turn_player:Players = Players.human;
     public deploying:boolean = false;
     public deploy_counter:number = 0;
+    public min_tiles_to_win:number;
 
     constructor(difficulty:Difficulties,board_size:number)
     {
         if (board_size < 6 || board_size % 3 != 0)
             DevelopmentError("Invalid board size");
+        {
+            let board_size_squared = Math.pow(board_size,2)
+            this.min_tiles_to_win =  (board_size_squared - (board_size_squared / 9)) * 0.8;
+        }
         this.difficulty = difficulty;
         ((board_size:number) : void =>
         {
@@ -1188,8 +1203,56 @@ abstract class Game
         DevelopmentError("PassTurn function not implemented in Game inheritor.");
     }
 
+    public IsGameOver() : boolean
+    {
+        let player:IPlayer = this.GetPlayer(this.turn_player);
+        let other_player:IPlayer = this.GetOtherPlayer(this.turn_player);
+        let color:Tiles = player.color;
+        let count:number = 0;
+        let y = 0,
+            i = 0,
+            x = 0,
+            l = this.board.length;
+        while (y < l)
+        {
+            x = 0;
+            while (x < l)
+            {
+                if (this.board[y][x] == color)
+                    count++;
+                x++;
+            }
+            y++;
+        }
+        if (count >= this.min_tiles_to_win)
+            return true;
+        i = 0,
+        l = this.piece_length,
+        count = 0;
+        while (i < l)
+        {
+            if (other_player.pieces[i].active)
+                count++;
+            i++;
+        }
+        if (count == 0)
+            return true;
+        return false;
+    }
+
+    public HandleGameOver() : void
+    {
+        console.log('Game Over')
+        canvas_manager.GameOver(this.turn_player);
+        this.turn_player = -1;
+    }
+
     public TurnEnd() : void
     {
+        if (this.IsGameOver()) {
+            this.HandleGameOver();
+            return;
+        }
         this.turn_counter++;
         this.PassTurn();
         canvas_manager.ClearCanvas(CanvasLayers.foreground);
