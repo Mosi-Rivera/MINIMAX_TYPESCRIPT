@@ -1,5 +1,5 @@
 # MINIMAX_TYPESCRIPT
-A small project I made to learn typescript and <a href="https://en.wikipedia.org/wiki/Minimax" target="_blank">MINIMAX</a>. 
+A small project I made to learn typescript and <a href="https://en.wikipedia.org/wiki/Minimax" target="_blank">MINIMAX</a>.<br/> 
 <a href='https://mosi-rivera.github.io/MINIMAX_TYPESCRIPT/' target="_blank"><strong>CLICK ME TO OPEN GAME!</strong></a>
 
 # MECHANICS
