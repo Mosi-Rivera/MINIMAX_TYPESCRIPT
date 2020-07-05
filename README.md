@@ -1,5 +1,5 @@
 # MINIMAX_TYPESCRIPT
-A small project I made to learn typescript and MINIMAX.
+A small project I made to learn typescript and MINIMAX. <a href='https://mosi-rivera.github.io/MINIMAX_TYPESCRIPT/'>CLICK ME TO OPEN GAME!</a>
 
 # MECHANICS
 <ul>
@@ -10,11 +10,12 @@ A small project I made to learn typescript and MINIMAX.
 
 # HOW TO PLAY?
 <ul>
-  <li>Hover the board and select a movement direction to move all you pieces on the board.</li>
-  <li>Every the players come closer to being unlocked. When pieces are unlocked click on them and then on a blue tile to deploy them.</li>
+  <li>The player is in control of the blue tiles and pieces and the bot controls the red tiles and pieces.</li>
+  <li>Hover the board and select a movement direction. All pieces on the board will be move in that direction.</li>
+  <li>Every turn pieces come closer to being unlocked. When pieces are unlocked click on them and then on a blue tile to deploy them.</li>
 </ul>
 
-# WIN CONDITION
+# WIN CONDITIONs
 <ul>
   <li>Fill more than 70% of the board with blue tiles. The bars on the right of the board show how close each player is to winning this way.</li>
   <li>Remove all of the bots pieces from the board.</li>
