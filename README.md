@@ -16,7 +16,7 @@ A small project I made to learn typescript and <a href="https://en.wikipedia.org
   <li>Every turn pieces come closer to being unlocked. When pieces are unlocked click on them and then on a blue tile to deploy them.</li>
 </ul>
 
-# WIN CONDITIONs
+# WIN CONDITIONS
 <ul>
   <li>Fill more than 70% of the board with blue tiles. The bars on the right of the board show how close each player is to winning this way.</li>
   <li>Remove all of the bots pieces from the board.</li>
